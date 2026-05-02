@@ -169,6 +169,93 @@ impl IngestService {
         })
     }
 
+    pub async fn ingest_from_path(
+        &self,
+        path: &str,
+        extensions: Option<Vec<String>>,
+        recursive: bool,
+    ) -> Result<IngestResult> {
+        use std::path::Path;
+        use walkdir::WalkDir;
+
+        let path = Path::new(path);
+        if !path.exists() {
+            anyhow::bail!("Path does not exist: {}", path.display());
+        }
+
+        let allowed_exts = extensions.unwrap_or_else(|| vec!["md".to_string(), "txt".to_string()]);
+        let mut total_pages = 0;
+        let mut total_chunks = 0;
+        let mut warnings = Vec::new();
+
+        if path.is_file() {
+            let content = std::fs::read_to_string(path)
+                .context(format!("Failed to read file: {}", path.display()))?;
+            
+            let page_id = format!(".wiki/{}", path.file_name().unwrap().to_string_lossy());
+            match self.ingest_page(&page_id, &content).await {
+                Ok(result) => {
+                    total_pages += result.pages_processed;
+                    total_chunks += result.chunks_created;
+                    warnings.extend(result.warnings);
+                }
+                Err(e) => {
+                    warnings.push(format!("Failed to ingest {}: {}", path.display(), e));
+                }
+            }
+        } else if path.is_dir() {
+            let walker = if recursive {
+                WalkDir::new(path)
+            } else {
+                WalkDir::new(path).max_depth(1)
+            };
+
+            for entry in walker.into_iter().filter_map(|e| e.ok()) {
+                if !entry.file_type().is_file() {
+                    continue;
+                }
+
+                let file_path = entry.path();
+                if let Some(ext) = file_path.extension() {
+                    if !allowed_exts.iter().any(|e| e == ext.to_string_lossy().as_ref()) {
+                        continue;
+                    }
+                }
+
+                let content = match std::fs::read_to_string(file_path) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        warnings.push(format!("Failed to read {}: {}", file_path.display(), e));
+                        continue;
+                    }
+                };
+
+                let relative_path = file_path.strip_prefix(path)
+                    .unwrap_or(file_path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let page_id = format!(".wiki/{}", relative_path);
+
+                match self.ingest_page(&page_id, &content).await {
+                    Ok(result) => {
+                        total_pages += result.pages_processed;
+                        total_chunks += result.chunks_created;
+                        warnings.extend(result.warnings);
+                    }
+                    Err(e) => {
+                        warnings.push(format!("Failed to ingest {}: {}", file_path.display(), e));
+                    }
+                }
+            }
+        }
+
+        Ok(IngestResult {
+            pages_processed: total_pages,
+            chunks_created: total_chunks,
+            warnings,
+        })
+    }
+
     /// Delete a page and all its chunks from the vector store.
     pub async fn delete_page(&self, page_id: &str) -> Result<()> {
         self.storage.delete_page(page_id).await

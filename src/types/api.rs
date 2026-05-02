@@ -67,7 +67,18 @@ pub struct StreamChatResponse {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct IngestRequest {
-    pub content: String,
+    /// Path to a file or directory to ingest
+    pub path: String,
+    /// Optional: specific file extensions to include (e.g., ["md", "txt"])
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extensions: Option<Vec<String>>,
+    /// Optional: whether to recursively scan directories
+    #[serde(default = "default_recursive")]
+    pub recursive: bool,
+}
+
+fn default_recursive() -> bool {
+    true
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -110,4 +121,18 @@ pub struct HealthResponse {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ErrorResponse {
     pub error: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InitConfigRequest {
+    /// Optional: custom project path. If None, uses default user config directory
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_path: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InitConfigResponse {
+    pub success: bool,
+    pub config_path: String,
+    pub error: Option<String>,
 }

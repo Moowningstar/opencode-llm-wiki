@@ -13,5 +13,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/ingest", post(handlers::ingest_file))
         .route("/api/config/get", post(handlers::get_config))
         .route("/api/config/save", post(handlers::save_config))
+        .route("/api/config/init", post(handlers::init_config))
         .with_state(state)
 }

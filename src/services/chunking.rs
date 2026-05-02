@@ -579,9 +579,12 @@ fn apply_overlap(pieces: &[Piece], config: &ChunkingConfig) -> Vec<Piece> {
     for i in 1..pieces.len() {
         let prev = &pieces[i - 1];
         let curr = &pieces[i];
-        let tail_start = prev.text.len().saturating_sub(config.overlap_chars);
-        let tail_src = &prev.text[tail_start..];
-        let snapped = snap_overlap_head(tail_src);
+        
+        let char_count = prev.text.chars().count();
+        let skip_chars = char_count.saturating_sub(config.overlap_chars);
+        let tail_src: String = prev.text.chars().skip(skip_chars).collect();
+        
+        let snapped = snap_overlap_head(&tail_src);
         out.push(Piece {
             text: format!("{}{}", snapped, curr.text),
             offset: curr.offset - snapped.len(),

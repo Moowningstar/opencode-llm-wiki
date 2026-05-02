@@ -47,12 +47,16 @@ pub async fn ingest_file(
     State(state): State<Arc<AppState>>,
     Json(req): Json<IngestRequest>,
 ) -> Result<Json<IngestResponse>, (StatusCode, String)> {
-    match state.ingest_service.ingest_file_blocks(&req.content).await {
+    match state.ingest_service.ingest_from_path(&req.path, req.extensions, req.recursive).await {
         Ok(result) => Ok(Json(IngestResponse {
             success: true,
             pages_processed: result.pages_processed,
             chunks_created: result.chunks_created,
-            error: None,
+            error: if result.warnings.is_empty() {
+                None
+            } else {
+                Some(result.warnings.join("; "))
+            },
         })),
         Err(e) => Ok(Json(IngestResponse {
             success: false,
@@ -95,6 +99,27 @@ pub async fn save_config(
         Err(e) => {
             Ok(Json(SaveConfigResponse {
                 success: false,
+                error: Some(e),
+            }))
+        }
+    }
+}
+
+pub async fn init_config(
+    Json(payload): Json<InitConfigRequest>,
+) -> Result<Json<InitConfigResponse>, (StatusCode, Json<ErrorResponse>)> {
+    match config::init_config(payload.project_path.as_deref()) {
+        Ok(config_path) => {
+            Ok(Json(InitConfigResponse {
+                success: true,
+                config_path: config_path.to_string_lossy().to_string(),
+                error: None,
+            }))
+        }
+        Err(e) => {
+            Ok(Json(InitConfigResponse {
+                success: false,
+                config_path: String::new(),
                 error: Some(e),
             }))
         }
