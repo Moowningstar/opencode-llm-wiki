@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "llm-wiki": {
+      "command": "node",
+      "args": [
+        "C:\\Users\\Moow\\Projects\\opencode-llm-wiki\\llm_wiki\\mcp-server\\server.js"
+      ],
+      "env": {
+        "LLM_WIKI_PROJECT": "${HOME}/llm-wiki-projects/default"
+      }
+    }
+  }
+}

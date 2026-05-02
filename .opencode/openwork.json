@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "workspace": {
+    "name": "opencode-llm-wiki",
+    "createdAt": 1777651793647,
+    "preset": "starter"
+  },
+  "authorizedRoots": [
+    "C:\\Users\\Moow\\Projects\\opencode-llm-wiki"
+  ],
+  "reload": null
+}

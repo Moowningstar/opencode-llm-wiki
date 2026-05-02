@@ -1,0 +1,17 @@
+{
+  "name": "opencode-llm-wiki",
+  "private": true,
+  "version": "0.0.1",
+  "description": "OpenCode LLM Wiki - Monorepo root",
+  "scripts": {
+    "server:dev": "cd src-server && cargo run --bin llm-wiki-server",
+    "server:build": "cd src-server && cargo build --release",
+    "server:test": "cd src-server && cargo test"
+  },
+  "workspaces": [
+    "src-desktop",
+    "src-extension",
+    "src-mcp",
+    "src-web"
+  ]
+}

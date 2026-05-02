@@ -1,0 +1,40 @@
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+dist-ssr
+*.local
+
+# Rust build artifacts
+src-tauri/target/
+src-desktop/src-tauri-new/target/
+target/
+
+# GitNexus
+.gitnexus
+
+# Claude/OpenCode
+.claude/.*
+
+# Obsidian
+.obsidian/
+
+# LLM Wiki data (user-specific)
+UsersMoow.opencode-wiki/
+*.opencode-wiki/
+
+# Test files
+test-*.js
+test-*.ts
+
+# Documentation (generated)
+*_GUIDE.md
+*_SUMMARY.md
+*_SETUP.md
+*_API.md
+QUICKSTART*.md
+RUST_API_SERVER.md
+
+# MCP server build
+mcp-server/lib/
