@@ -3,10 +3,10 @@
     "llm-wiki": {
       "command": "node",
       "args": [
-        "C:\\Users\\Moow\\Projects\\opencode-llm-wiki\\mcp-server\\server.js"
+        "src-mcp/src/server.js"
       ],
       "env": {
-        "LLM_WIKI_PROJECT": "C:\\Users\\Moow\\Projects\\opencode-llm-wiki",
+        "LLM_WIKI_PROJECT": "${workspaceFolder}",
         "LLM_WIKI_API_URL": "http://127.0.0.1:19828"
       }
     }

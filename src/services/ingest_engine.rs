@@ -55,7 +55,7 @@ pub fn is_safe_ingest_path(p: &str) -> bool {
         return false;
     }
 
-    if !normalized.starts_with(".wiki/") {
+    if !normalized.starts_with(".wiki-") && !normalized.starts_with(".wiki/") {
         return false;
     }
 

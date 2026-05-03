@@ -1,0 +1,46 @@
+# OpenCode LLM Wiki Configuration Example
+# Copy this file to config.toml and adjust settings
+
+[server]
+# HTTP API server settings
+host = "127.0.0.1"
+port = 19828
+
+[embedding]
+# Embedding provider configuration
+# Supports any OpenAI-compatible /v1/embeddings endpoint
+provider = "openai"  # or "custom"
+api_key = "your-api-key-here"
+base_url = "https://api.openai.com/v1"  # Change for custom providers
+model = "text-embedding-3-small"
+dimension = 1536
+
+[llm]
+# LLM provider for chat and generation
+# Supports: openai, anthropic, google, ollama, custom
+provider = "openai"
+api_key = "your-api-key-here"
+base_url = "https://api.openai.com/v1"
+model = "gpt-4"
+
+[storage]
+# Vector storage backend
+backend = "lancedb"  # Currently only lancedb supported
+data_path = "./.llm-wiki/lancedb"
+
+[wiki]
+# Wiki file system settings
+pages_dir = "./.wiki/pages"
+index_file = "./.wiki/index.json"
+graph_file = "./.wiki/graph.json"
+
+[chunking]
+# Document chunking settings
+chunk_size = 512
+chunk_overlap = 50
+heading_aware = true
+
+[search]
+# Search settings
+top_k = 10
+similarity_threshold = 0.7

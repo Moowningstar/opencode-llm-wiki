@@ -5,136 +5,144 @@
 </p>
 
 <p align="center">
-  <strong>LLM Knowledge Engine with Graph-Native Vector Storage</strong><br>
-  Production-ready Rust backend designed for RuVector migration • 3-layer architecture • Token-optimized retrieval
+  <strong>Knowledge Engine Backend with Multiple Interfaces</strong><br>
+  HTTP API • CLI Tools • MCP Protocol • Wiki File System • Vector Search • Knowledge Graph
 </p>
 
 <p align="center">
   <a href="#what-is-this">What is this?</a> •
   <a href="#architecture">Architecture</a> •
-  <a href="#why-ruvector">Why RuVector?</a> •
-  <a href="#tech-stack">Tech Stack</a> •
+  <a href="#features">Features</a> •
   <a href="#installation">Installation</a> •
-  <a href="#roadmap">Roadmap</a> •
+  <a href="#quick-start">Quick Start</a> •
   <a href="#license">License</a>
 </p>
 
 <p align="center">
-  English | <a href="README_CN.md">中文</a>
+  English | <a href="README_ZH.md">中文</a>
 </p>
 
 ---
 
 ## What is this?
 
-**OpenCode LLM Wiki** is a **graph-native LLM knowledge engine** built in Rust, designed to evolve from traditional vector databases (LanceDB) to **RuVector's self-organizing neural architecture (SONA)**. Unlike traditional RAG systems that re-derive answers on every query, this system **compiles knowledge once** into a persistent, self-organizing graph that learns from usage patterns.
+**OpenCode LLM Wiki** is a **knowledge engine backend** that provides persistent, queryable knowledge storage with multiple access interfaces. It maintains a structured wiki that can be accessed via HTTP API, CLI tools, or AI agents through the Model Context Protocol (MCP).
 
 ### Core Philosophy
 
-**Knowledge as Compiled Artifact, Not Runtime Derivation**
+**Persistent Knowledge Engine for AI Agents and Developers**
 
-Traditional RAG systems treat knowledge retrieval as a stateless operation — embed query → search vectors → feed chunks to LLM. This project inverts that model:
+This is a knowledge engine backend that provides multiple access methods for storing, indexing, and retrieving structured knowledge. Unlike ephemeral RAG systems that forget everything after each conversation, this project provides:
 
-1. **Compilation Phase** (Ingest): LLM reads sources → generates structured wiki pages → builds knowledge graph with 4-signal relevance model
-2. **Runtime Phase** (Query): Graph traversal + token-optimized retrieval → LLM answers with citations
-3. **Evolution Phase** (SONA, future): Graph self-organizes based on query trajectories → adaptive edge weights → catastrophic forgetting prevention
+1. **Persistent Wiki Storage**: Markdown files in `.wiki/pages/` with metadata-driven indexing
+2. **Multiple Interfaces**: HTTP API, CLI tools, and MCP protocol for different use cases
+3. **Knowledge Graph**: Automatic link extraction and relationship mapping
+4. **Vector Search**: LanceDB-powered semantic search for finding related content
+5. **Cross-Session Memory**: Knowledge persists across sessions, conversations, and tools
 
-This design is inspired by [Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) but extends it with:
-- **Graph-first architecture** ready for RuVector's native graph capabilities
-- **Token cache layer** (tiktoken-rs) reducing LLM costs by 70%
-- **3-layer backend** (Interface → Services → Storage) enabling clean storage backend swaps
-- **SONA-ready design** for incremental learning and adaptive relevance scoring
+### Use Cases
+
+- **AI Agent Memory**: Persistent context that survives across conversations (via MCP)
+- **Codebase Documentation**: Living architecture docs queryable through API or CLI
+- **Project Knowledge Base**: Store decisions, patterns, and tribal knowledge
+- **Research Notes**: Organize papers, articles, and findings with semantic search
+- **Personal Wiki**: Build a second brain accessible through multiple interfaces
 
 ---
 
 ## Architecture
 
-### Current State: Production-Ready 3-Layer Backend
+### Three-Layer Knowledge Engine
 
-**Completed (2026-05-02)** — 3,856 lines of Rust, 8 unit tests passing
+This is a **knowledge engine backend** with multiple interfaces, not just an MCP tool.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ Layer 1: Interface                                          │
-│  • HTTP API (Axum): 5 endpoints (health, config, llm, ingest)│
-│  • CLI Tools: serve, init, ingest, query                   │
+│ Layer 1: Interface Layer (Multiple Access Points)           │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │  HTTP API    │  │     CLI      │  │  MCP Server  │     │
+│  │  (Axum)      │  │   (clap)     │  │  (Node.js)   │     │
+│  │  Port 19828  │  │              │  │  stdio       │     │
+│  └──────────────┘  └──────────────┘  └──────────────┘     │
+│  • Request validation and routing                          │
+│  • Response formatting                                     │
+│  • No business logic                                       │
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
-│ Layer 2: Business Logic (Services)                         │
-│  • EmbeddingService   → OpenAI-compatible embedding API    │
-│  • ChunkingService    → Markdown heading-aware splitting   │
-│  • IngestService      → Orchestration (parse→chunk→embed→store)│
-│  • QueryService       → Search + token budget optimization │
-│  • TokenCacheService  → tiktoken-rs pre-computation (70% savings)│
+│ Layer 2: Indexing & Retrieval (Rust Backend)                │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │ Wiki File System                                     │   │
+│  │  • WikiFileSystem: .wiki/pages/ management          │   │
+│  │  • IndexManager: index.json metadata                │   │
+│  │  • GraphManager: graph.json relationships           │   │
+│  └──────────────────────────────────────────────────────┘   │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │ Search & Retrieval                                   │   │
+│  │  • Keyword search (tokenized)                        │   │
+│  │  • Semantic search (vector embeddings)               │   │
+│  │  • Graph traversal (link extraction)                 │   │
+│  └──────────────────────────────────────────────────────┘   │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │ Document Processing                                  │   │
+│  │  • Ingest pipeline (parse → chunk → embed → store)  │   │
+│  │  • Markdown chunking (heading-aware)                 │   │
+│  │  • Metadata extraction                               │   │
+│  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
-│ Layer 3: Data Abstraction (Storage)                        │
-│  • VectorStorage trait → 5 async methods (upsert, search, delete, count, dim)│
-│  • LanceDBStorage impl → Current production backend        │
-│  • [Future] RuVectorStorage impl → SONA-powered graph DB   │
+│ Layer 3: Storage Layer (Pluggable Backends)                 │
+│  ┌──────────────────┐              ┌──────────────────┐    │
+│  │  File System     │              │  Vector DB       │    │
+│  │  .wiki/pages/    │              │  LanceDB         │    │
+│  │  index.json      │              │  (→ RuVector)    │    │
+│  │  graph.json      │              │                  │    │
+│  └──────────────────┘              └──────────────────┘    │
+│  • VectorStorage trait abstraction                         │
+│  • Easy backend swapping (LanceDB → RuVector)              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Key Design Decisions:**
+**Key Design Principles:**
 
-- ✅ **Trait-based storage abstraction** — Migrating to RuVector requires only implementing `VectorStorage` trait (no service layer changes)
-- ✅ **Token cache as first-class citizen** — Pre-computed token IDs stored in vector DB payload, 100% cache hit rate
-- ✅ **Dependency injection via AppState** — Services testable in isolation with mock storage
-- ✅ **Zero cross-layer dependencies** — Clean boundaries enable parallel development
+- **Multiple Interfaces**: HTTP API for programmatic access, CLI for automation, MCP for AI agents
+- **Metadata-Driven**: index.json manages page metadata, graph.json stores relationships
+- **Pluggable Storage**: VectorStorage trait enables easy migration (LanceDB → RuVector)
+- **Clean Separation**: Interface layer has no business logic, storage layer has no retrieval logic
 
-### Performance Baseline (LanceDB)
+### MCP Tools (10 Available)
 
-| Metric | Current | Target (RuVector) | Improvement |
-|--------|---------|-------------------|-------------|
-| Query Latency (p50) | 150ms | 5ms | **30x faster** |
-| Query Latency (p95) | 500ms | 10ms | **50x faster** |
-| Token Cache Hit Rate | 100% | 100% | Maintained |
-| Graph Traversal | N/A (manual) | <2ms | **New capability** |
-| Community Detection | Manual Louvain | Auto (SONA) | **New capability** |
+| Tool | Purpose |
+|------|---------|
+| `wiki_read` | Read a single wiki page by path |
+| `wiki_list` | List all wiki pages with metadata |
+| `wiki_search` | Keyword search across wiki content |
+| `wiki_query_with_context` | Intelligent context injection (keyword + vector) |
+| `wiki_get_graph` | Get knowledge graph (nodes and edges) |
+| `wiki_graph_insights` | Analyze graph structure (isolated pages, bridges) |
+| `wiki_deep_research` | Multi-hop reasoning with graph traversal |
+| `wiki_get_index` | Get content catalog (index.md) |
+| `wiki_get_overview` | Get global summary (overview.md) |
+| `wiki_get_purpose` | Get wiki goals and scope (purpose.md) |
+| `wiki_ingest` | Ingest documents into knowledge base |
 
----
+### API Endpoints (Rust Backend)
 
-## Why RuVector?
-
-### The SONA Vision
-
-**SONA (Self-Organizing Neural Architecture)** is RuVector's incremental learning engine that adapts knowledge graphs based on query trajectories:
-
-- **MicroLoRA + BaseLoRA** — Lightweight weight adapters adjust edge relevance without full retraining
-- **Trajectory Recording** — Captures user query → retrieved chunks → LLM response patterns
-- **EWC++ (Elastic Weight Consolidation)** — Prevents catastrophic forgetting while integrating new knowledge
-- **Reasoning Bank** — Stores successful query patterns for future optimization
-
-### Why This Matters for LLM-WIKI
-
-Current limitations with LanceDB:
-- ❌ No native graph relationships (manual 4-signal relevance model)
-- ❌ Static knowledge structure (no learning from usage)
-- ❌ Manual community detection (Louvain runs client-side)
-- ❌ 150ms query latency (vector search overhead)
-
-RuVector unlocks:
-- ✅ **Native graph edges** — `FOLLOWS`, `REFERENCES`, `SIMILAR`, `PARENT_CHILD` relationships
-- ✅ **Adaptive relevance** — Edge weights update based on query success
-- ✅ **Auto-clustering** — SONA discovers knowledge domains without manual tuning
-- ✅ **Sub-10ms queries** — In-memory graph traversal vs. disk-based vector search
-
-### Migration Strategy
-
-See [docs/architecture/ruvector-migration-roadmap.md](docs/architecture/ruvector-migration-roadmap.md) for the full 8-week plan.
-
-**Phase 0** (Current): LanceDB baseline with token caching  
-**Phase 1** (Week 1-2): RuVector prototype + performance benchmarking  
-**Phase 2** (Week 3-4): Feature migration (preserve token cache, add graph relationships)  
-**Phase 3** (Week 5-6): SONA integration (trajectory recording, adaptive optimization)  
-**Phase 4** (Week 7-8): Production deployment with A/B testing
-
-**Decision Point**: Proceed with migration when:
-- ✅ Project reaches stable v1.0
-- ✅ RuVector ecosystem matures (6+ months)
-- ✅ Team bandwidth available for 8-week effort
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/health` | GET | Health check |
+| `/api/pages` | POST | List all pages |
+| `/api/pages/read` | POST | Read page content |
+| `/api/search/keyword` | POST | Keyword search |
+| `/api/search/semantic` | POST | Vector semantic search |
+| `/api/graph` | POST | Get knowledge graph |
+| `/api/graph/insights` | POST | Graph analysis |
+| `/api/research` | POST | Deep research |
+| `/api/meta/index` | POST | Get index |
+| `/api/meta/overview` | POST | Get overview |
+| `/api/meta/purpose` | POST | Get purpose |
+| `/api/ingest` | POST | Ingest documents |
 
 ---
 

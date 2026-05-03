@@ -192,7 +192,8 @@ impl IngestService {
             let content = std::fs::read_to_string(path)
                 .context(format!("Failed to read file: {}", path.display()))?;
             
-            let page_id = format!(".wiki/{}", path.file_name().unwrap().to_string_lossy());
+            let filename = path.file_name().unwrap().to_string_lossy().replace('/', "-").replace('\\', "-");
+            let page_id = format!(".wiki-{}", filename);
             match self.ingest_page(&page_id, &content).await {
                 Ok(result) => {
                     total_pages += result.pages_processed;
@@ -233,8 +234,9 @@ impl IngestService {
                 let relative_path = file_path.strip_prefix(path)
                     .unwrap_or(file_path)
                     .to_string_lossy()
-                    .replace('\\', "/");
-                let page_id = format!(".wiki/{}", relative_path);
+                    .replace('\\', "-")
+                    .replace('/', "-");
+                let page_id = format!(".wiki-{}", relative_path);
 
                 match self.ingest_page(&page_id, &content).await {
                     Ok(result) => {

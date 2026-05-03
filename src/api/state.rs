@@ -7,6 +7,9 @@ use crate::services::embedding::{EmbeddingService, EmbeddingConfig};
 use crate::services::ingest::{IngestService, IngestConfig};
 use crate::services::query::{QueryService, QueryConfig};
 use crate::services::llm_client::LlmClient;
+use crate::wiki::filesystem::WikiFileSystem;
+use crate::wiki::index::IndexManager;
+use crate::wiki::graph::GraphManager;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -15,11 +18,15 @@ pub struct AppState {
     pub ingest_service: Arc<IngestService>,
     pub query_service: Arc<QueryService>,
     pub llm_client: Arc<LlmClient>,
+    pub wiki_fs: Arc<WikiFileSystem>,
+    pub index_manager: Arc<IndexManager>,
+    pub graph_manager: Arc<GraphManager>,
 }
 
 impl AppState {
     pub async fn new(
         db_path: &str,
+        project_path: &str,
         embedding_config: EmbeddingConfig,
         ingest_config: IngestConfig,
         query_config: QueryConfig,
@@ -41,16 +48,25 @@ impl AppState {
             query_config,
         ));
 
+        let wiki_fs = Arc::new(WikiFileSystem::new(project_path)?);
+        wiki_fs.init()?;
+        
+        let index_manager = Arc::new(IndexManager::new(wiki_fs.clone()));
+        let graph_manager = Arc::new(GraphManager::new(wiki_fs.clone()));
+
         Ok(Self {
             storage,
             embedding_service,
             ingest_service,
             query_service,
             llm_client: Arc::new(llm_client),
+            wiki_fs,
+            index_manager,
+            graph_manager,
         })
     }
 
-    pub async fn with_defaults(db_path: &str, api_key: String) -> Result<Self> {
+    pub async fn with_defaults(db_path: &str, project_path: &str, api_key: String) -> Result<Self> {
         let embedding_config = EmbeddingConfig {
             api_key: api_key.clone(),
             ..Default::default()
@@ -64,6 +80,7 @@ impl AppState {
 
         Self::new(
             db_path,
+            project_path,
             embedding_config,
             IngestConfig::default(),
             QueryConfig::default(),

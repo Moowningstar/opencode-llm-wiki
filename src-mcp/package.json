@@ -1,0 +1,34 @@
+{
+  "name": "@opencode-llm-wiki/mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for OpenCode LLM Wiki - Knowledge base integration",
+  "type": "module",
+  "main": "src/server.js",
+  "bin": {
+    "llm-wiki": "./src/cli.js"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "better-sqlite3": "^11.10.0",
+    "chokidar": "^4.0.3",
+    "commander": "^12.1.0",
+    "node-fetch": "^3.3.2"
+  },
+  "keywords": [
+    "llm",
+    "wiki",
+    "knowledge-base",
+    "mcp",
+    "model-context-protocol",
+    "opencode"
+  ],
+  "author": "",
+  "license": "GPL-3.0",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

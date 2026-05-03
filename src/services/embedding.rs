@@ -3,25 +3,22 @@ use reqwest::{Client, header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TY
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-/// Configuration for embedding service
 #[derive(Clone, Debug)]
 pub struct EmbeddingConfig {
-    /// API endpoint URL
-    pub api_url: String,
-    /// API key for authentication
-    pub api_key: String,
-    /// Model name (e.g., "text-embedding-ada-002", "text-embedding-3-small")
+    pub provider: String,
     pub model: String,
-    /// Expected embedding dimension
+    pub api_key: String,
+    pub base_url: String,
     pub dimension: usize,
 }
 
 impl Default for EmbeddingConfig {
     fn default() -> Self {
         Self {
-            api_url: "https://api.openai.com/v1/embeddings".to_string(),
-            api_key: String::new(),
+            provider: "openai".to_string(),
             model: "text-embedding-ada-002".to_string(),
+            api_key: String::new(),
+            base_url: "https://api.openai.com/v1".to_string(),
             dimension: 1536,
         }
     }
@@ -35,7 +32,6 @@ pub struct EmbeddingService {
 }
 
 impl EmbeddingService {
-    /// Create a new embedding service with the given configuration
     pub fn new(config: EmbeddingConfig) -> Result<Self> {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -49,7 +45,7 @@ impl EmbeddingService {
             .default_headers(headers)
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .context("Failed to create HTTP client")?;
+            .context("Failed to build HTTP client")?;
 
         Ok(Self {
             client,
@@ -57,13 +53,6 @@ impl EmbeddingService {
         })
     }
 
-    /// Generate embedding for a single text
-    ///
-    /// # Arguments
-    /// * `text` - Input text to embed
-    ///
-    /// # Returns
-    /// * `Result<Vec<f32>>` - Embedding vector
     pub async fn embed_text(&self, text: &str) -> Result<Vec<f32>> {
         let embeddings = self.embed_batch(vec![text]).await?;
         embeddings
@@ -72,26 +61,24 @@ impl EmbeddingService {
             .context("No embedding returned from API")
     }
 
-    /// Generate embeddings for multiple texts in a single batch request
-    ///
-    /// # Arguments
-    /// * `texts` - Vector of input texts to embed
-    ///
-    /// # Returns
-    /// * `Result<Vec<Vec<f32>>>` - Vector of embedding vectors
     pub async fn embed_batch(&self, texts: Vec<&str>) -> Result<Vec<Vec<f32>>> {
         if texts.is_empty() {
             return Ok(Vec::new());
         }
+
+        let api_url = format!("{}/embeddings", self.config.base_url);
 
         let request_body = EmbeddingRequest {
             input: texts.iter().map(|s| s.to_string()).collect(),
             model: self.config.model.clone(),
         };
 
+        tracing::info!("Sending embedding request to: {}", api_url);
+        tracing::debug!("Model: {}, Texts count: {}", self.config.model, texts.len());
+
         let response = self
             .client
-            .post(&self.config.api_url)
+            .post(&api_url)
             .json(&request_body)
             .send()
             .await
@@ -164,7 +151,7 @@ mod tests {
         let config = EmbeddingConfig::default();
         assert_eq!(config.dimension, 1536);
         assert_eq!(config.model, "text-embedding-ada-002");
-        assert!(config.api_url.contains("openai.com"));
+        assert!(config.base_url.contains("openai.com"));
     }
 
     #[test]
