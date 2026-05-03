@@ -11,11 +11,26 @@ src-tauri/target/
 src-desktop/src-tauri-new/target/
 target/
 
+# Release packages
+release/
+
 # GitNexus
 .gitnexus
 
-# Claude/OpenCode
-.claude/.*
+# AI Assistant Configuration (development only)
+.claude/
+.opencode/
+AGENTS.md
+CLAUDE.md
+opencode.json
+opencode.jsonc
+
+# Wiki data (development/testing)
+.wiki/
+.llm-wiki/
+data/
+purpose.md
+schema.md
 
 # Obsidian
 .obsidian/
@@ -27,6 +42,13 @@ UsersMoow.opencode-wiki/
 # Test files
 test-*.js
 test-*.ts
+
+# Logs
+*.log
+server.log
+
+# Temporary files
+nul
 
 # Documentation (generated)
 *_GUIDE.md
