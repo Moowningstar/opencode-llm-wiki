@@ -1,6 +1,6 @@
 [package]
 name = "llm-wiki-server"
-version = "0.1.0"
+version = "1.1.0"
 edition = "2021"
 license = "GPL-3.0"
 authors = ["Moow"]
@@ -44,10 +44,15 @@ tiktoken-rs = "0.5"
 # HTTP 客户端
 reqwest = { version = "0.12", features = ["json", "stream"] }
 
-# 向量数据库 (临时使用 LanceDB，后续替换为 RuVector)
-lancedb = "0.27.2"
-arrow-array = "57"
-arrow-schema = "57"
+# 向量数据库 - RuVector (向量 + 图 + GNN 一体化)
+ruvector-core = { version = "2.2.0", optional = true }
+ruvector-graph = { version = "2.2.0", optional = true }
+ruvector-gnn = { version = "2.2.0", optional = true }
+
+# LanceDB (保留作为备选方案)
+lancedb = { version = "0.27.2", optional = true }
+arrow-array = { version = "57", optional = true }
+arrow-schema = { version = "57", optional = true }
 futures = "0.3"
 futures-util = "0.3"
 
@@ -58,5 +63,15 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 async-stream = "0.3"
 walkdir = "2"
 
+[features]
+default = ["ruvector"]
+ruvector = ["ruvector-core", "ruvector-graph", "ruvector-gnn"]
+lancedb-backend = ["lancedb", "arrow-array", "arrow-schema"]
+
 [dev-dependencies]
 criterion = "0.5"
+tempfile = "3.0"
+
+[[bench]]
+name = "storage_benchmark"
+harness = false

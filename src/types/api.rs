@@ -361,14 +361,25 @@ fn default_analysis_type() -> String {
 /// Response containing graph insights
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GraphInsightsResponse {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub isolated_pages: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub bridge_nodes: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub surprising_connections: Option<Vec<(String, String)>>,
+    pub isolated_pages: Vec<String>,
+    pub bridge_nodes: Vec<BridgeNode>,
+    pub surprising_connections: Vec<(String, String)>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stats: Option<GraphStats>,
+}
+
+/// Bridge node with centrality score
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BridgeNode {
+    pub id: String,
+    pub score: f64,
+}
+
+/// PageRank result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PageRank {
+    pub id: String,
+    pub score: f64,
 }
 
 /// Graph statistics
@@ -376,7 +387,9 @@ pub struct GraphInsightsResponse {
 pub struct GraphStats {
     pub total_nodes: usize,
     pub total_edges: usize,
-    pub avg_degree: f32,
+    pub avg_degree: f64,
+    pub num_communities: usize,
+    pub top_pages: Vec<PageRank>,
 }
 
 /// Request for deep research

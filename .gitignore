@@ -60,3 +60,12 @@ RUST_API_SERVER.md
 
 # MCP server build
 mcp-server/lib/
+
+# Legacy/archived code (keep locally, don't upload)
+src-desktop/
+src-legacy/
+src-web/
+
+# Old project files
+raw/
+projects/

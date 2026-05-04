@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use std::sync::Arc;
+use llm_wiki_server::storage::VectorStorage;
 
 #[derive(Parser)]
 #[command(name = "llm-wiki")]
@@ -39,6 +40,20 @@ enum Commands {
         #[arg(short, long, default_value = "5")]
         limit: usize,
     },
+    
+    Migrate {
+        #[arg(long)]
+        from: String,
+        #[arg(long)]
+        to: String,
+        #[arg(short, long)]
+        project: String,
+    },
+    
+    Check {
+        #[arg(short, long)]
+        project: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -66,7 +81,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let api_key = std::env::var("OPENAI_API_KEY")
                 .unwrap_or_else(|_| "sk-placeholder".to_string());
             
-            let storage = Arc::new(llm_wiki_server::storage::lancedb_impl::LanceDbStorage::new(project_path));
+            #[cfg(feature = "ruvector")]
+            let storage = Arc::new(llm_wiki_server::storage::RuVectorStorage::new(project_path.to_string(), 2048).await?);
+            
+            #[cfg(all(feature = "lancedb-backend", not(feature = "ruvector")))]
+            let storage = Arc::new(llm_wiki_server::storage::LanceDbStorage::new(project_path));
+            
             let embedding_service = llm_wiki_server::services::embedding::EmbeddingService::new(
                 llm_wiki_server::services::embedding::EmbeddingConfig {
                     api_key,
@@ -92,7 +112,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let api_key = std::env::var("OPENAI_API_KEY")
                 .unwrap_or_else(|_| "sk-placeholder".to_string());
             
-            let storage = Arc::new(llm_wiki_server::storage::lancedb_impl::LanceDbStorage::new(project_path));
+            #[cfg(feature = "ruvector")]
+            let storage = Arc::new(llm_wiki_server::storage::RuVectorStorage::new(project_path.to_string(), 2048).await?);
+            
+            #[cfg(all(feature = "lancedb-backend", not(feature = "ruvector")))]
+            let storage = Arc::new(llm_wiki_server::storage::LanceDbStorage::new(project_path));
+            
             let embedding_service = llm_wiki_server::services::embedding::EmbeddingService::new(
                 llm_wiki_server::services::embedding::EmbeddingConfig {
                     api_key,
@@ -117,6 +142,53 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if res.chunk_text.len() > 200 {
                     println!("   ...");
                 }
+            }
+        }
+        Commands::Migrate { from, to, project } => {
+            println!("🔄 Migrating from {} to {}", from, to);
+            println!("   Project: {}", project);
+            
+            if from == "lancedb" && to == "ruvector" {
+                #[cfg(all(feature = "ruvector", feature = "lancedb-backend"))]
+                {
+                    println!("⚠️  Migration not yet implemented");
+                    println!("   This will be implemented in Phase 1.7");
+                }
+                
+                #[cfg(not(all(feature = "ruvector", feature = "lancedb-backend")))]
+                {
+                    eprintln!("Error: Both 'ruvector' and 'lancedb-backend' features must be enabled for migration");
+                    std::process::exit(1);
+                }
+            } else {
+                eprintln!("Error: Unsupported migration path: {} -> {}", from, to);
+                std::process::exit(1);
+            }
+        }
+        Commands::Check { project } => {
+            let project_path = project.unwrap_or_else(|| ".".to_string());
+            println!("🔍 Checking storage backend...");
+            println!("   Project: {}", project_path);
+            
+            #[cfg(feature = "ruvector")]
+            {
+                println!("   Backend: RuVector");
+                let storage = llm_wiki_server::storage::ruvector_impl::RuVectorStorage::new(
+                    project_path.clone(), 
+                    2048
+                ).await?;
+                let count = storage.count().await?;
+                println!("   ✅ RuVector is working");
+                println!("   Total chunks: {}", count);
+            }
+            
+            #[cfg(all(feature = "lancedb-backend", not(feature = "ruvector")))]
+            {
+                println!("   Backend: LanceDB");
+                let storage = llm_wiki_server::storage::LanceDbStorage::new(project_path);
+                let count = storage.count().await?;
+                println!("   ✅ LanceDB is working");
+                println!("   Total chunks: {}", count);
             }
         }
     }

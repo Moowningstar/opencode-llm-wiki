@@ -1,7 +1,12 @@
 use std::sync::Arc;
 use anyhow::Result;
 
+#[cfg(feature = "ruvector")]
+use crate::storage::ruvector_impl::RuVectorStorage;
+
+#[cfg(feature = "lancedb-backend")]
 use crate::storage::lancedb_impl::LanceDbStorage;
+
 use crate::storage::traits::VectorStorage;
 use crate::services::embedding::{EmbeddingService, EmbeddingConfig};
 use crate::services::ingest::{IngestService, IngestConfig};
@@ -25,14 +30,25 @@ pub struct AppState {
 
 impl AppState {
     pub async fn new(
-        db_path: &str,
+        _db_path: &str,
         project_path: &str,
         embedding_config: EmbeddingConfig,
         ingest_config: IngestConfig,
         query_config: QueryConfig,
         llm_client: LlmClient,
     ) -> Result<Self> {
-        let storage = Arc::new(LanceDbStorage::new(db_path.to_string()));
+        #[cfg(feature = "ruvector")]
+        let storage: Arc<dyn VectorStorage> = Arc::new(
+            RuVectorStorage::new(project_path.to_string(), 2048).await?
+        );
+
+        #[cfg(all(feature = "lancedb-backend", not(feature = "ruvector")))]
+        let storage: Arc<dyn VectorStorage> = Arc::new(
+            LanceDbStorage::new(db_path.to_string())
+        );
+
+        #[cfg(not(any(feature = "ruvector", feature = "lancedb-backend")))]
+        compile_error!("Either 'ruvector' or 'lancedb-backend' feature must be enabled");
         
         let embedding_service = EmbeddingService::new(embedding_config.clone())?;
         

@@ -1,14 +1,46 @@
 # OpenCode LLM Wiki - MCP Server
 
-MCP (Model Context Protocol) server integration for OpenCode LLM Wiki.
+[![npm version](https://badge.fury.io/js/@opencode-llm-wiki%2Fmcp-server.svg)](https://www.npmjs.com/package/@opencode-llm-wiki/mcp-server)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
+MCP (Model Context Protocol) server for OpenCode LLM Wiki - Knowledge graph backend with vector search.
+
+## 📦 Installation
+
+### From npm
+
+```bash
+npm install -g @opencode-llm-wiki/mcp-server
+```
+
+### From source
+
+```bash
+git clone https://github.com/Moowningstar/opencode-llm-wiki.git
+cd opencode-llm-wiki/src-mcp
+npm install
+```
 
 ## 🚀 Quick Start
 
-### Installation
+### Usage in Claude Desktop
 
-```bash
-cd src-mcp
-npm install
+Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "llm-wiki": {
+      "command": "node",
+      "args": [
+        "/path/to/node_modules/@opencode-llm-wiki/mcp-server/src/server.js"
+      ],
+      "env": {
+        "LLM_WIKI_API_URL": "http://localhost:19828"
+      }
+    }
+  }
+}
 ```
 
 ### Usage in OpenCode
@@ -21,9 +53,9 @@ The MCP server is automatically configured via `opencode.jsonc` in the project r
     "servers": {
       "llm-wiki": {
         "command": "node",
-        "args": ["src-mcp/src/server.js"],
+        "args": ["node_modules/@opencode-llm-wiki/mcp-server/src/server.js"],
         "env": {
-          "LLM_WIKI_PROJECT": "${workspaceFolder}"
+          "LLM_WIKI_API_URL": "http://localhost:19828"
         }
       }
     }
@@ -31,11 +63,24 @@ The MCP server is automatically configured via `opencode.jsonc` in the project r
 }
 ```
 
-OpenCode will automatically start the MCP server when you open this project.
+### Start the Backend Server
+
+Before using the MCP server, make sure the OpenCode LLM Wiki backend is running:
+
+```bash
+# Clone the main repository
+git clone https://github.com/Moowningstar/opencode-llm-wiki.git
+cd opencode-llm-wiki
+
+# Build and run the Rust backend
+cargo run --bin llm-wiki-server -- --port 19828
+```
+
+The MCP server communicates with the backend via HTTP API.
 
 ## 🛠️ Available MCP Tools
 
-The server exposes **10 tools** for interacting with your knowledge base:
+The server exposes **11 tools** for interacting with your knowledge base:
 
 ### Core Tools
 
@@ -45,21 +90,22 @@ The server exposes **10 tools** for interacting with your knowledge base:
 | `wiki_list` | List all wiki pages |
 | `wiki_search` | Search pages by keyword |
 | `wiki_query_with_context` | Intelligent context injection (keyword + vector search) |
+| `wiki_ingest` | Ingest documents into the knowledge graph |
 
 ### Graph Tools
 
 | Tool | Description |
 |------|-------------|
 | `wiki_get_graph` | Get knowledge graph data (nodes and edges) |
-| `wiki_graph_insights` | Analyze graph structure (isolated pages, surprising connections, bridges) |
-| `wiki_deep_research` | Multi-hop reasoning with graph traversal |
+| `wiki_graph_insights` | Analyze graph structure (isolated pages, bridges, statistics) |
+| `wiki_deep_research` | Multi-hop reasoning with graph traversal and semantic search |
 
 ### Metadata Tools
 
 | Tool | Description |
 |------|-------------|
 | `wiki_get_index` | Get index.md (content catalog) |
-| `wiki_get_overview` | Get overview.md (global summary) |
+| `wiki_get_overview` | Get overview.md (global summary with graph statistics) |
 | `wiki_get_purpose` | Get purpose.md (wiki goals and scope) |
 
 ## 📖 Tool Examples
@@ -100,25 +146,61 @@ The server exposes **10 tools** for interacting with your knowledge base:
 }
 ```
 
+### Graph Insights
+
+```typescript
+{
+  "tool": "wiki_graph_insights",
+  "arguments": {
+    "analysis_type": "all"  // Options: "isolated", "bridges", "stats", "all"
+  }
+}
+```
+
+### Ingest Documents
+
+```typescript
+{
+  "tool": "wiki_ingest",
+  "arguments": {
+    "path": "docs/architecture.md",
+    "recursive": false
+  }
+}
+```
+
 ## 🏗️ Architecture
 
+The MCP server acts as a bridge between AI agents (like Claude Desktop) and the OpenCode LLM Wiki backend:
+
 ```
-src-mcp/
-├── src/
-│   ├── server.js           # MCP protocol handler
-│   ├── cli.js              # CLI tool (llm-wiki command)
-│   └── lib/
-│       ├── wiki-bridge.js      # Wiki file system bridge
-│       ├── database.js         # SQLite database
-│       ├── vector-cache.js     # Vector embedding cache
-│       ├── context-manager.js  # Smart context injection
-│       ├── semantic-search.js  # Vector similarity search
-│       ├── graph-analyzer.js   # Knowledge graph analysis
-│       ├── indexer.js          # Full-text indexing
-│       ├── keyword-detector.js # Keyword extraction
-│       └── file-watcher.js     # File change monitoring
-└── package.json
+┌─────────────────┐
+│  Claude Desktop │
+│   (AI Agent)    │
+└────────┬────────┘
+         │ MCP Protocol (stdio)
+         ↓
+┌─────────────────┐
+│   MCP Server    │
+│  (Node.js)      │
+└────────┬────────┘
+         │ HTTP API
+         ↓
+┌─────────────────┐
+│  Rust Backend   │
+│  (Port 19828)   │
+│                 │
+│  • RuVector DB  │
+│  • Graph Algos  │
+│  • Vector Search│
+└─────────────────┘
 ```
+
+### Components
+
+- **MCP Server** (`src/server.js`): Implements Model Context Protocol, exposes 11 tools
+- **Core API Client** (`src/lib/core-api-client.js`): HTTP client for backend communication
+- **Backend Server**: Rust service providing vector search, graph algorithms, and storage
 
 ## 🔧 Development
 
@@ -126,25 +208,26 @@ src-mcp/
 
 ```bash
 cd src-mcp
-node src/server.js
+LLM_WIKI_API_URL=http://localhost:19828 node src/server.js
 ```
 
 The server runs in stdio mode for MCP protocol communication.
 
 ### Debug Mode
 
+Set the `DEBUG` environment variable to see detailed logs:
+
 ```bash
-DEBUG=* node src/server.js
+DEBUG=llm-wiki:* LLM_WIKI_API_URL=http://localhost:19828 node src/server.js
 ```
 
-### CLI Tool
+### Testing Tools
+
+You can test individual tools using the MCP inspector or by sending JSON-RPC requests:
 
 ```bash
-# Initialize a new wiki project
-node src/cli.js init my-wiki
-
-# Start MCP server
-node src/cli.js serve my-wiki
+# Example: Test wiki_list tool
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"wiki_list","arguments":{}}}' | node src/server.js
 ```
 
 ## 📝 Configuration

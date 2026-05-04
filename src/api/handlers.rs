@@ -371,61 +371,251 @@ pub async fn get_graph(
 }
 
 pub async fn graph_insights(
-    State(_state): State<Arc<AppState>>,
-    Json(_req): Json<GraphInsightsRequest>,
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<GraphInsightsRequest>,
 ) -> Result<Json<GraphInsightsResponse>, (StatusCode, Json<ErrorResponse>)> {
-    Err((
-        StatusCode::NOT_IMPLEMENTED,
-        Json(ErrorResponse {
-            error: "Not implemented yet".to_string(),
-        }),
-    ))
+    use crate::wiki::graph_algorithms_impl::{pagerank, louvain_communities, betweenness_centrality};
+    
+    match state.index_manager.load() {
+        Ok(index) => {
+            let graph = state.graph_manager.generate_from_index(&index);
+            
+            let analysis_type = req.analysis_type.as_str();
+            let mut insights = GraphInsightsResponse {
+                isolated_pages: Vec::new(),
+                surprising_connections: Vec::new(),
+                bridge_nodes: Vec::new(),
+                stats: None,
+            };
+            
+            if analysis_type == "isolated" || analysis_type == "all" {
+                insights.isolated_pages = graph.nodes.iter()
+                    .filter(|n| {
+                        let has_outgoing = graph.edges.iter().any(|e| e.from == n.id);
+                        let has_incoming = graph.edges.iter().any(|e| e.to == n.id);
+                        !has_outgoing && !has_incoming
+                    })
+                    .map(|n| n.id.clone())
+                    .collect();
+            }
+            
+            if analysis_type == "bridges" || analysis_type == "all" {
+                let centrality = betweenness_centrality(&graph);
+                let mut sorted: Vec<_> = centrality.into_iter().collect();
+                sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+                insights.bridge_nodes = sorted.into_iter()
+                    .take(10)
+                    .map(|(id, score)| BridgeNode { id, score })
+                    .collect();
+            }
+            
+            if analysis_type == "stats" || analysis_type == "all" {
+                let pagerank_scores = pagerank(&graph, 0.85, 100);
+                let communities = louvain_communities(&graph);
+                
+                insights.stats = Some(GraphStats {
+                    total_nodes: graph.nodes.len(),
+                    total_edges: graph.edges.len(),
+                    avg_degree: if graph.nodes.is_empty() { 0.0 } else {
+                        graph.edges.len() as f64 / graph.nodes.len() as f64
+                    },
+                    num_communities: communities.len(),
+                    top_pages: pagerank_scores.into_iter()
+                        .take(10)
+                        .map(|(id, score)| PageRank { id, score })
+                        .collect(),
+                });
+            }
+            
+            Ok(Json(insights))
+        }
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: e.to_string() }),
+        )),
+    }
 }
 
 pub async fn deep_research(
-    State(_state): State<Arc<AppState>>,
-    Json(_req): Json<DeepResearchRequest>,
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<DeepResearchRequest>,
 ) -> Result<Json<DeepResearchResponse>, (StatusCode, Json<ErrorResponse>)> {
-    Err((
-        StatusCode::NOT_IMPLEMENTED,
-        Json(ErrorResponse {
-            error: "Not implemented yet".to_string(),
-        }),
-    ))
+    use crate::wiki::graph_algorithms_impl::bfs_traversal;
+    
+    match state.index_manager.load() {
+        Ok(index) => {
+            let graph = state.graph_manager.generate_from_index(&index);
+            
+            let query_embedding = state.embedding_service.embed_text(&req.query).await
+                .map_err(|e| (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse { error: format!("Failed to embed query: {}", e) }),
+                ))?;
+            
+            let search_results = state.storage.search(query_embedding, req.max_results).await
+                .map_err(|e| (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse { error: e.to_string() }),
+                ))?;
+            
+            let mut visited_pages = Vec::new();
+            let mut connections = Vec::new();
+            
+            for result in search_results.iter().take(3) {
+                let start_id = result.page_id.trim_end_matches(".md");
+                let reachable = bfs_traversal(&graph, start_id, req.max_depth);
+                
+                for node_id in reachable {
+                    if !visited_pages.contains(&node_id) {
+                        visited_pages.push(node_id.clone());
+                    }
+                    
+                    for edge in &graph.edges {
+                        if edge.from == node_id && visited_pages.contains(&edge.to) {
+                            connections.push((edge.from.clone(), edge.to.clone()));
+                        }
+                    }
+                }
+                
+                if visited_pages.len() >= req.max_results {
+                    break;
+                }
+            }
+            
+            visited_pages.truncate(req.max_results);
+            
+            Ok(Json(DeepResearchResponse {
+                summary: format!(
+                    "Found {} related pages across {} connections, starting from {} seed pages",
+                    visited_pages.len(),
+                    connections.len(),
+                    search_results.len().min(3)
+                ),
+                pages: visited_pages,
+                connections,
+            }))
+        }
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: e.to_string() }),
+        )),
+    }
 }
 
 pub async fn get_index(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Json(_req): Json<GetIndexRequest>,
 ) -> Result<Json<GetIndexResponse>, (StatusCode, Json<ErrorResponse>)> {
-    Err((
-        StatusCode::NOT_IMPLEMENTED,
-        Json(ErrorResponse {
-            error: "Not implemented yet".to_string(),
-        }),
-    ))
+    let index_path = state.wiki_fs.index_path();
+    
+    match tokio::fs::read_to_string(&index_path).await {
+        Ok(content) => {
+            match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(index) => {
+                    let pages = index.get("pages")
+                        .and_then(|p| p.as_array())
+                        .ok_or_else(|| (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(ErrorResponse {
+                                error: "Invalid index format: missing 'pages' array".to_string(),
+                            }),
+                        ))?;
+                    
+                    let mut markdown = String::from("# Wiki Index\n\n");
+                    markdown.push_str(&format!("**Total Pages:** {}\n\n", pages.len()));
+                    
+                    for page in pages {
+                        if let Some(title) = page.get("title").and_then(|v| v.as_str()) {
+                            let path = page.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                            let tags = page.get("tags").and_then(|v| v.as_array())
+                                .map(|arr| arr.iter()
+                                    .filter_map(|v| v.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", "))
+                                .unwrap_or_default();
+                            
+                            markdown.push_str(&format!("- **{}** ({})\n", title, path));
+                            if !tags.is_empty() {
+                                markdown.push_str(&format!("  Tags: {}\n", tags));
+                            }
+                        }
+                    }
+                    
+                    Ok(Json(GetIndexResponse { content: markdown }))
+                }
+                Err(e) => Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: format!("Failed to parse index: {}", e),
+                    }),
+                ))
+            }
+        }
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("Failed to read index: {}", e),
+            }),
+        ))
+    }
 }
 
 pub async fn get_overview(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Json(_req): Json<GetOverviewRequest>,
 ) -> Result<Json<GetOverviewResponse>, (StatusCode, Json<ErrorResponse>)> {
-    Err((
-        StatusCode::NOT_IMPLEMENTED,
-        Json(ErrorResponse {
-            error: "Not implemented yet".to_string(),
-        }),
-    ))
+    let graph_path = state.wiki_fs.graph_path();
+    
+    match tokio::fs::read_to_string(&graph_path).await {
+        Ok(content) => {
+            match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(graph) => {
+                    let node_count = graph.get("nodes")
+                        .and_then(|n| n.as_array())
+                        .map(|n| n.len())
+                        .unwrap_or(0);
+                    let edge_count = graph.get("edges")
+                        .and_then(|e| e.as_array())
+                        .map(|e| e.len())
+                        .unwrap_or(0);
+                    
+                    let mut overview = String::from("# Wiki Overview\n\n");
+                    overview.push_str("## Knowledge Graph Statistics\n\n");
+                    overview.push_str(&format!("- **Total Pages:** {}\n", node_count));
+                    overview.push_str(&format!("- **Total Connections:** {}\n", edge_count));
+                    overview.push_str(&format!("- **Average Connections per Page:** {:.2}\n\n", 
+                        if node_count > 0 { edge_count as f64 / node_count as f64 } else { 0.0 }));
+                    
+                    Ok(Json(GetOverviewResponse { content: overview }))
+                }
+                Err(e) => Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: format!("Failed to parse graph: {}", e),
+                    }),
+                ))
+            }
+        }
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("Failed to read graph: {}", e),
+            }),
+        ))
+    }
 }
 
 pub async fn get_purpose(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Json(_req): Json<GetPurposeRequest>,
 ) -> Result<Json<GetPurposeResponse>, (StatusCode, Json<ErrorResponse>)> {
-    Err((
-        StatusCode::NOT_IMPLEMENTED,
-        Json(ErrorResponse {
-            error: "Not implemented yet".to_string(),
-        }),
-    ))
+    match state.wiki_fs.read_purpose() {
+        Ok(content) => Ok(Json(GetPurposeResponse { content })),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("Failed to read purpose: {}", e),
+            }),
+        ))
+    }
 }

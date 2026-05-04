@@ -1,15 +1,16 @@
 {
   "name": "@opencode-llm-wiki/mcp-server",
-  "version": "1.0.0",
-  "description": "MCP server for OpenCode LLM Wiki - Knowledge base integration",
+  "publishConfig": {
+    "access": "public"
+  },
+  "version": "1.0.2",
+  "description": "MCP server for OpenCode LLM Wiki - Knowledge graph backend with vector search",
   "type": "module",
   "main": "src/server.js",
-  "bin": {
-    "llm-wiki": "./src/cli.js"
-  },
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "node --watch src/server.js",
+    "prepublishOnly": "echo 'Publishing MCP server v1.0.2'"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",
@@ -22,13 +23,37 @@
     "llm",
     "wiki",
     "knowledge-base",
+    "knowledge-graph",
+    "vector-search",
     "mcp",
     "model-context-protocol",
-    "opencode"
+    "opencode",
+    "rust",
+    "ruvector",
+    "graph-algorithms",
+    "pagerank",
+    "semantic-search"
   ],
-  "author": "",
+  "author": "Moow",
   "license": "GPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Moowningstar/opencode-llm-wiki.git",
+    "directory": "src-mcp"
+  },
+  "homepage": "https://github.com/Moowningstar/opencode-llm-wiki/tree/main/src-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/Moowningstar/opencode-llm-wiki/issues"
+  },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "files": [
+    "src/**/*.js",
+    "!src/node_modules",
+    "!src/package.json",
+    "!src/package-lock.json",
+    "!src/README.md",
+    "README.md"
+  ]
 }

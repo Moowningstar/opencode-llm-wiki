@@ -1,17 +1,12 @@
 {
   "name": "opencode-llm-wiki",
   "private": true,
-  "version": "0.0.1",
-  "description": "OpenCode LLM Wiki - Monorepo root",
+  "version": "1.1.0",
+  "description": "OpenCode LLM Wiki - Knowledge graph system with vector search",
   "scripts": {
-    "server:dev": "cd src-server && cargo run --bin llm-wiki-server",
-    "server:build": "cd src-server && cargo build --release",
-    "server:test": "cd src-server && cargo test"
-  },
-  "workspaces": [
-    "src-desktop",
-    "src-extension",
-    "src-mcp",
-    "src-web"
-  ]
+    "dev": "cargo run --bin llm-wiki-server",
+    "build": "cargo build --release",
+    "test": "cargo test",
+    "mcp": "cd src-mcp && npm start"
+  }
 }
