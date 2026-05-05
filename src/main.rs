@@ -6,7 +6,7 @@ use llm_wiki_server::api::start_api_server;
 #[derive(Parser)]
 #[command(name = "llm-wiki-server")]
 #[command(about = "OpenCode LLM Wiki API Server")]
-#[command(version = "0.1.0")]
+#[command(version = "1.1.1")]
 struct Args {
     #[arg(long, default_value = "127.0.0.1")]
     host: String,
@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     
     println!("🚀 OpenCode LLM Wiki Server");
-    println!("   Version: 0.1.0");
+    println!("   Version: 1.1.1");
     println!("   Host: {}", args.host);
     println!("   Port: {}", args.port);
     println!();
