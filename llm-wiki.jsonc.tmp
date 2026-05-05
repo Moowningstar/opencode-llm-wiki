@@ -1,0 +1,220 @@
+{
+  // ============================================================================
+  // OpenCode LLM Wiki - Default Configuration Template
+  // ============================================================================
+  // Copy this file to ~/.config/opencode-llm-wiki/llm-wiki.jsonc and configure
+  // your API keys and preferences.
+  //
+  // Configuration Priority:
+  //   1. ~/.config/opencode-llm-wiki/llm-wiki.jsonc
+  //   2. ~/.config/opencode-llm-wiki/llm-config.jsonc
+  //   3. ~/.config/opencode/llm-wiki.jsonc
+  //   4. ~/.config/opencode/llm-config.jsonc
+  // ============================================================================
+
+  // ----------------------------------------------------------------------------
+  // Context Model (for query optimization and content generation)
+  // ----------------------------------------------------------------------------
+  // Format: "provider/model-name"
+  // This model is used for:
+  //   - Query context optimization
+  //   - Wiki page generation
+  //   - Content summarization
+  "contextModel": "anthropic/claude-opus-4.6",
+
+  // ----------------------------------------------------------------------------
+  // Embedding Model (for vector search)
+  // ----------------------------------------------------------------------------
+  // Format: "provider/model-name"
+  // This model is used for:
+  //   - Document chunking and embedding
+  //   - Semantic search
+  //   - Vector similarity computation
+  "embeddingModel": "openrouter/nvidia/llama-nemotron-embed-vl-1b-v2:free",
+
+  // ----------------------------------------------------------------------------
+  // Embedding Dimension
+  // ----------------------------------------------------------------------------
+  // Must match the output dimension of your embedding model
+  // Common values:
+  //   - OpenAI text-embedding-3-small: 1536
+  //   - OpenAI text-embedding-3-large: 3072
+  //   - nvidia/llama-nemotron-embed-vl-1b-v2: 2048
+  "embeddingDimension": 2048,
+
+  // ----------------------------------------------------------------------------
+  // Provider Configurations
+  // ----------------------------------------------------------------------------
+  // Configure API keys and endpoints for each LLM provider
+  "providers": {
+    // OpenRouter (aggregates multiple providers)
+    "openrouter": {
+      "options": {
+        "apiKey": "sk-or-v1-YOUR_OPENROUTER_API_KEY_HERE",
+        "baseURL": "https://openrouter.ai/api/v1",
+        "maxContextSize": 200000
+      }
+    },
+
+    // Anthropic (Claude models)
+    "anthropic": {
+      "options": {
+        "apiKey": "sk-ant-YOUR_ANTHROPIC_API_KEY_HERE",
+        "baseURL": "https://api.anthropic.com/v1",
+        "model": "claude-opus-4.6",
+        "maxContextSize": 200000
+      }
+    },
+
+    // OpenAI (GPT models)
+    "openai": {
+      "options": {
+        "apiKey": "sk-YOUR_OPENAI_API_KEY_HERE",
+        "baseURL": "https://api.openai.com/v1",
+        "model": "gpt-4o",
+        "maxContextSize": 128000
+      }
+    },
+
+    // Google (Gemini models)
+    "google": {
+      "options": {
+        "apiKey": "YOUR_GOOGLE_API_KEY_HERE",
+        "baseURL": "https://generativelanguage.googleapis.com/v1beta",
+        "model": "gemini-2.0-flash-exp",
+        "maxContextSize": 1000000
+      }
+    },
+
+    // Ollama (local models)
+    "ollama": {
+      "options": {
+        "baseURL": "http://localhost:11434",
+        "model": "qwen2.5:14b",
+        "maxContextSize": 32768
+      }
+    },
+
+    // Custom provider (for self-hosted or other APIs)
+    "custom": {
+      "options": {
+        "apiKey": "YOUR_CUSTOM_API_KEY_HERE",
+        "baseURL": "https://your-api-endpoint.com/v1",
+        "model": "your-model-name",
+        "maxContextSize": 8192
+      }
+    }
+  },
+
+  // ----------------------------------------------------------------------------
+  // Chunking Configuration
+  // ----------------------------------------------------------------------------
+  // Controls how documents are split into chunks for embedding
+  "chunking": {
+    // Target chunk size in characters (soft limit)
+    // Chunks will be split at heading boundaries when possible
+    "targetChars": 1000,
+
+    // Overlap between consecutive chunks in characters
+    // Helps maintain context across chunk boundaries
+    "overlapChars": 200,
+
+    // Maximum chunk size in characters (hard limit)
+    // Chunks exceeding this will be force-split
+    "maxChars": 2000
+  },
+
+  // ----------------------------------------------------------------------------
+  // Storage Configuration
+  // ----------------------------------------------------------------------------
+  // Vector database backend selection
+  "storage": {
+    // Backend type: "ruvector" (default) or "lancedb"
+    // - ruvector: Unified vector + graph + GNN storage (recommended)
+    // - lancedb: Arrow-based vector storage (alternative)
+    "backend": "ruvector",
+
+    // Storage path (relative to project root or absolute)
+    // Default locations:
+    //   - ruvector: ./data/ruvector
+    //   - lancedb: ./data/lancedb
+    "path": "./data/ruvector"
+  }
+
+  // ============================================================================
+  // Quick Start Guide
+  // ============================================================================
+  //
+  // 1. Copy this file to ~/.config/opencode-llm-wiki/llm-wiki.jsonc
+  //
+  // 2. Replace placeholder API keys:
+  //    - For OpenRouter: Get key from https://openrouter.ai/keys
+  //    - For Anthropic: Get key from https://console.anthropic.com/
+  //    - For OpenAI: Get key from https://platform.openai.com/api-keys
+  //
+  // 3. Choose your models:
+  //    - contextModel: High-quality model for generation (Claude Opus, GPT-4)
+  //    - embeddingModel: Efficient embedding model (check dimension!)
+  //
+  // 4. Verify embedding dimension matches your model:
+  //    - Check model documentation for output dimension
+  //    - Update embeddingDimension accordingly
+  //
+  // 5. Start the server:
+  //    cargo run --release --bin llm-wiki-server
+  //
+  // 6. Test with health check:
+  //    curl http://127.0.0.1:19828/health
+  //
+  // ============================================================================
+  // Recommended Configurations
+  // ============================================================================
+  //
+  // Budget-Friendly (Free/Low-Cost):
+  //   contextModel: "openrouter/google/gemini-2.0-flash-exp:free"
+  //   embeddingModel: "openrouter/nvidia/llama-nemotron-embed-vl-1b-v2:free"
+  //   embeddingDimension: 2048
+  //
+  // High-Quality (Best Results):
+  //   contextModel: "anthropic/claude-opus-4.6"
+  //   embeddingModel: "openai/text-embedding-3-large"
+  //   embeddingDimension: 3072
+  //
+  // Local-Only (Privacy-Focused):
+  //   contextModel: "ollama/qwen2.5:14b"
+  //   embeddingModel: "ollama/nomic-embed-text"
+  //   embeddingDimension: 768
+  //   (Requires Ollama running locally)
+  //
+  // Balanced (Good Quality + Reasonable Cost):
+  //   contextModel: "openai/gpt-4o"
+  //   embeddingModel: "openai/text-embedding-3-small"
+  //   embeddingDimension: 1536
+  //
+  // ============================================================================
+  // Troubleshooting
+  // ============================================================================
+  //
+  // Server won't start:
+  //   - Check config file syntax (valid JSONC)
+  //   - Verify all required fields are present
+  //   - Check API key format (no extra spaces/quotes)
+  //   - Ensure port 19828 is not in use
+  //
+  // Embedding errors:
+  //   - Verify embeddingDimension matches model output
+  //   - Check API key has embedding permissions
+  //   - Test API connectivity: curl provider baseURL
+  //
+  // Context model errors:
+  //   - Verify API key is valid and active
+  //   - Check model name format: "provider/model-name"
+  //   - Ensure provider is configured in providers section
+  //
+  // Storage errors:
+  //   - Check write permissions for storage path
+  //   - Verify disk space available
+  //   - Try deleting .llm-wiki/ directory and reinitializing
+  //
+  // ============================================================================
+}

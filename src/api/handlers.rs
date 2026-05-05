@@ -314,7 +314,10 @@ pub async fn semantic_search(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SemanticSearchRequest>,
 ) -> Result<Json<SemanticSearchResponse>, (StatusCode, Json<ErrorResponse>)> {
-    match state.query_service.query(&req.query).await {
+    // Use project filter if provided, otherwise search across all projects
+    let project_filter = req.project.as_deref();
+    
+    match state.query_service.query_with_filter(&req.query, project_filter).await {
         Ok(query_result) => {
             let matches: Vec<SemanticMatch> = query_result.results.iter()
                 .filter(|r| r.score >= req.min_score)
@@ -452,7 +455,8 @@ pub async fn deep_research(
                     Json(ErrorResponse { error: format!("Failed to embed query: {}", e) }),
                 ))?;
             
-            let search_results = state.storage.search(query_embedding, req.max_results).await
+            let project_filter = req.project.as_deref();
+            let search_results = state.storage.search(query_embedding, req.max_results, project_filter).await
                 .map_err(|e| (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(ErrorResponse { error: e.to_string() }),

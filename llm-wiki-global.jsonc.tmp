@@ -1,0 +1,178 @@
+{
+  // ============================================================================
+  // OpenCode LLM Wiki - Configuration Template (Global Storage)
+  // ============================================================================
+  // This is the NEW configuration format for global storage architecture.
+  // Copy to ~/.config/opencode-llm-wiki/llm-wiki.jsonc and configure your keys.
+  //
+  // BREAKING CHANGE: This version uses global storage at ~/.opencode-llm-wiki/
+  // instead of per-project .llm-wiki/ directories.
+  // ============================================================================
+
+  // ----------------------------------------------------------------------------
+  // Context Model (for query optimization and content generation)
+  // ----------------------------------------------------------------------------
+  "contextModel": "anthropic/claude-opus-4.6",
+
+  // ----------------------------------------------------------------------------
+  // Embedding Model (for vector search)
+  // ----------------------------------------------------------------------------
+  "embeddingModel": "openrouter/nvidia/llama-nemotron-embed-vl-1b-v2:free",
+
+  // ----------------------------------------------------------------------------
+  // Embedding Dimension
+  // ----------------------------------------------------------------------------
+  "embeddingDimension": 2048,
+
+  // ----------------------------------------------------------------------------
+  // Provider Configurations
+  // ----------------------------------------------------------------------------
+  "providers": {
+    "openrouter": {
+      "options": {
+        "apiKey": "sk-or-v1-YOUR_OPENROUTER_API_KEY_HERE",
+        "baseURL": "https://openrouter.ai/api/v1",
+        "maxContextSize": 200000
+      }
+    },
+
+    "anthropic": {
+      "options": {
+        "apiKey": "sk-ant-YOUR_ANTHROPIC_API_KEY_HERE",
+        "baseURL": "https://api.anthropic.com/v1",
+        "model": "claude-opus-4.6",
+        "maxContextSize": 200000
+      }
+    },
+
+    "openai": {
+      "options": {
+        "apiKey": "sk-YOUR_OPENAI_API_KEY_HERE",
+        "baseURL": "https://api.openai.com/v1",
+        "model": "gpt-4o",
+        "maxContextSize": 128000
+      }
+    },
+
+    "google": {
+      "options": {
+        "apiKey": "YOUR_GOOGLE_API_KEY_HERE",
+        "baseURL": "https://generativelanguage.googleapis.com/v1beta",
+        "model": "gemini-2.0-flash-exp",
+        "maxContextSize": 1000000
+      }
+    },
+
+    "ollama": {
+      "options": {
+        "baseURL": "http://localhost:11434",
+        "model": "qwen2.5:14b",
+        "maxContextSize": 32768
+      }
+    }
+  },
+
+  // ----------------------------------------------------------------------------
+  // Chunking Configuration
+  // ----------------------------------------------------------------------------
+  "chunking": {
+    "targetChars": 1000,
+    "overlapChars": 200,
+    "maxChars": 2000
+  },
+
+  // ----------------------------------------------------------------------------
+  // Storage Configuration (NEW: Global Storage)
+  // ----------------------------------------------------------------------------
+  "storage": {
+    // Backend type: "ruvector" (default, recommended)
+    "backend": "ruvector",
+
+    // Global storage root (NEW in this version)
+    // All projects share this location for vector deduplication
+    // Default: ~/.opencode-llm-wiki/
+    "globalRoot": "~/.opencode-llm-wiki",
+
+    // Enable vector deduplication across projects (NEW)
+    // Saves 30%+ disk space by reusing identical content vectors
+    "enableDeduplication": true
+  }
+
+  // ============================================================================
+  // Migration from Old Structure
+  // ============================================================================
+  //
+  // If you have existing projects using the old structure:
+  //   OLD: /path/to/project/.llm-wiki/ruvector/
+  //   NEW: ~/.opencode-llm-wiki/.vectors/.store/
+  //
+  // Run the migration command:
+  //   llm-wiki migrate-to-global --scan /path/to/search
+  //   llm-wiki migrate-to-global --scan /path/to/search --dry-run  # Preview only
+  //
+  // This will:
+  //   1. Scan for projects with old .llm-wiki/ruvector/ structure
+  //   2. Move vectors to global storage with deduplication
+  //   3. Register projects in ~/.opencode-llm-wiki/.projects/.registry.json
+  //   4. Preserve graph data in project-local storage
+  //
+  // Management commands:
+  //   llm-wiki projects list              # List all registered projects
+  //   llm-wiki projects stats             # Show deduplication statistics
+  //   llm-wiki projects cleanup           # Remove unused vectors (dry-run)
+  //   llm-wiki projects verify            # Check data integrity
+  //
+  // ============================================================================
+
+  // ============================================================================
+  // New Directory Structure
+  // ============================================================================
+  //
+  // ~/.opencode-llm-wiki/              # Global storage root
+  // ├── .vectors/
+  // │   ├── .store/                    # RuVector vector storage (deduplicated)
+  // │   ├── .hash_index.json           # content_hash → vector_id mapping
+  // │   └── .ref_counter.db            # SQLite reference tracking
+  // ├── .graph/
+  // │   └── .store/                    # RuVector graph storage
+  // ├── .projects/
+  // │   ├── .{project_id}/             # Per-project metadata
+  // │   │   ├── .info.json             # Project info
+  // │   │   ├── .wiki/                 # Wiki pages
+  // │   │   └── .meta/                 # Metadata
+  // │   └── .registry.json             # Project registry
+  // ├── .cache/                        # Embedding cache
+  // ├── .locks/                        # File locks
+  // └── .logs/                         # Operation logs
+  //
+  // /path/to/project/
+  // ├── .llm-wiki                      # Project marker (contains project_id)
+  // └── .gitignore                     # Add: .llm-wiki
+  //
+  // ============================================================================
+
+  // ============================================================================
+  // Benefits of Global Storage
+  // ============================================================================
+  //
+  // 1. Vector Deduplication
+  //    - Identical content across projects shares one vector
+  //    - Saves 30%+ disk space in multi-project setups
+  //    - Faster ingestion (reuse existing embeddings)
+  //
+  // 2. Cross-Project Search
+  //    - Search across all projects: llm-wiki search --global "Redis"
+  //    - Find knowledge scattered across repositories
+  //
+  // 3. Centralized Management
+  //    - One location to backup: ~/.opencode-llm-wiki/
+  //    - Easy cleanup: llm-wiki cleanup --unused-days 30
+  //    - Global statistics: llm-wiki stats
+  //
+  // 4. Git Isolation
+  //    - Data stored in ~/.opencode-llm-wiki/ (not in project dir)
+  //    - No risk of accidentally committing large vector databases
+  //    - Only .llm-wiki marker file in project (add to .gitignore)
+  //
+  // ============================================================================
+}

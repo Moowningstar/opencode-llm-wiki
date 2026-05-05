@@ -193,6 +193,7 @@ impl Provider for AnthropicProvider {
 #[derive(Debug)]
 pub struct GoogleProvider {
     config: ProviderConfig,
+    #[allow(dead_code)]
     model: String,
 }
 

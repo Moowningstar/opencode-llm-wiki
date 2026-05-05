@@ -45,10 +45,14 @@ impl QueryService {
     }
 
     pub async fn query(&self, query_text: &str) -> Result<QueryResult> {
+        self.query_with_filter(query_text, None).await
+    }
+
+    pub async fn query_with_filter(&self, query_text: &str, project_filter: Option<&str>) -> Result<QueryResult> {
         let query_embedding = self.embedding_service.embed_text(query_text).await
             .context("Failed to generate query embedding")?;
 
-        let mut results = self.storage.search(query_embedding.clone(), self.config.top_k).await
+        let mut results = self.storage.search(query_embedding.clone(), self.config.top_k, project_filter).await
             .context("Failed to search vector storage")?;
 
         if self.config.min_score > 0.0 {
@@ -62,7 +66,11 @@ impl QueryService {
     }
 
     pub async fn query_with_embedding(&self, query_embedding: Vec<f32>) -> Result<QueryResult> {
-        let mut results = self.storage.search(query_embedding.clone(), self.config.top_k).await
+        self.query_with_embedding_and_filter(query_embedding, None).await
+    }
+
+    pub async fn query_with_embedding_and_filter(&self, query_embedding: Vec<f32>, project_filter: Option<&str>) -> Result<QueryResult> {
+        let mut results = self.storage.search(query_embedding.clone(), self.config.top_k, project_filter).await
             .context("Failed to search vector storage")?;
 
         if self.config.min_score > 0.0 {

@@ -74,19 +74,21 @@ pub trait VectorStorage: Send + Sync {
     /// Insert or update chunks for a given page
     /// 
     /// # Arguments
+    /// * `project_id` - Project identifier (for multi-project support)
     /// * `page_id` - Unique identifier for the page (alphanumeric + [-_.])
     /// * `chunks` - Vector of chunks with embeddings and optional token cache
     /// 
     /// # Returns
     /// * `Ok(())` on success
     /// * `Err(StorageError)` if validation fails or storage operation fails
-    async fn upsert_chunks(&self, page_id: &str, chunks: Vec<ChunkInput>) -> StorageResult<()>;
+    async fn upsert_chunks(&self, project_id: &str, page_id: &str, chunks: Vec<ChunkInput>) -> StorageResult<()>;
 
     /// Search for similar chunks using vector similarity
     /// 
     /// # Arguments
     /// * `query_embedding` - Query vector (must match storage dimension)
     /// * `top_k` - Maximum number of results to return
+    /// * `project_filter` - Optional project ID to filter results (None = search all projects)
     /// 
     /// # Returns
     /// * `Ok(Vec<SearchResult>)` - Results sorted by similarity (highest first)
@@ -95,24 +97,29 @@ pub trait VectorStorage: Send + Sync {
         &self,
         query_embedding: Vec<f32>,
         top_k: usize,
+        project_filter: Option<&str>,
     ) -> StorageResult<Vec<SearchResult>>;
 
     /// Delete all chunks for a given page
     /// 
     /// # Arguments
+    /// * `project_id` - Project identifier
     /// * `page_id` - Page identifier to delete
     /// 
     /// # Returns
     /// * `Ok(())` on success (idempotent - no error if page doesn't exist)
     /// * `Err(StorageError)` if deletion fails
-    async fn delete_page(&self, page_id: &str) -> StorageResult<()>;
+    async fn delete_page(&self, project_id: &str, page_id: &str) -> StorageResult<()>;
 
     /// Count total number of chunks in storage
+    /// 
+    /// # Arguments
+    /// * `project_filter` - Optional project ID to filter count (None = count all projects)
     /// 
     /// # Returns
     /// * `Ok(usize)` - Total chunk count
     /// * `Err(StorageError)` if count operation fails
-    async fn count(&self) -> StorageResult<usize>;
+    async fn count(&self, project_filter: Option<&str>) -> StorageResult<usize>;
 
     /// Get embedding dimension for this storage backend
     /// 

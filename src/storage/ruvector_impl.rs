@@ -5,6 +5,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use super::traits::{VectorStorage, ChunkInput, SearchResult, StorageResult, StorageError};
+use super::deduplication::VectorDeduplicator;
+use crate::types::storage::GlobalStoragePaths;
 
 use ruvector_core::{VectorDB, DistanceMetric};
 use ruvector_core::types::DbOptions;
@@ -26,21 +28,46 @@ pub struct RuVectorStorage {
     vector_db: Arc<RwLock<VectorDB>>,
     graph_db: Arc<RwLock<GraphDB>>,
     dimension: usize,
+    deduplicator: Option<Arc<tokio::sync::Mutex<VectorDeduplicator>>>,
+    #[allow(dead_code)]
+    global_paths: Option<GlobalStoragePaths>,
 }
 
 #[cfg(feature = "ruvector")]
 impl RuVectorStorage {
     pub async fn new(project_path: String, embedding_dim: usize) -> StorageResult<Self> {
-        let db_path = Path::new(&project_path)
-            .join(".llm-wiki/ruvector")
+        Self::new_with_global_root(project_path, embedding_dim, None).await
+    }
+    
+    pub async fn new_with_global_root(
+        project_path: String, 
+        embedding_dim: usize,
+        global_root: Option<String>
+    ) -> StorageResult<Self> {
+        let global_paths = match global_root {
+            Some(root) => GlobalStoragePaths::new(root),
+            None => GlobalStoragePaths::default(),
+        };
+        
+        let deduplicator = VectorDeduplicator::new(Path::new(&global_paths.root))
+            .map_err(|e| StorageError::new(format!("Failed to initialize deduplicator: {}", e)))?;
+        
+        let vector_path = global_paths.vectors.clone();
+        
+        let graph_path = Path::new(&project_path)
+            .join(".llm-wiki/ruvector/graph")
             .to_string_lossy()
             .to_string();
+        
+        std::fs::create_dir_all(Path::new(&graph_path).parent().unwrap())
+            .map_err(|e| StorageError::new(format!("Failed to create ruvector directory: {}", e)))?;
 
-        std::fs::create_dir_all(Path::new(&project_path).join(".llm-wiki"))
-            .map_err(|e| StorageError::new(format!("Failed to create directory: {}", e)))?;
+        println!("📁 Initializing RuVector storage:");
+        println!("   Vector DB (global): {}", vector_path);
+        println!("   Graph DB (local): {}", graph_path);
 
         let vector_options = DbOptions {
-            storage_path: format!("{}/vectors", db_path),
+            storage_path: vector_path.clone(),
             dimensions: embedding_dim,
             distance_metric: DistanceMetric::Cosine,
             hnsw_config: None,
@@ -50,13 +77,17 @@ impl RuVectorStorage {
         let vector_db = VectorDB::new(vector_options)
             .map_err(|e| StorageError::new(format!("Failed to create vector DB: {}", e)))?;
         
-        let graph_db = GraphDB::with_storage(&format!("{}/graph", db_path))
+        let graph_db = GraphDB::with_storage(&graph_path)
             .map_err(|e| StorageError::new(format!("Failed to create graph DB: {}", e)))?;
+        
+        println!("✅ RuVector storage initialized successfully");
         
         Ok(Self {
             vector_db: Arc::new(RwLock::new(vector_db)),
             graph_db: Arc::new(RwLock::new(graph_db)),
             dimension: embedding_dim,
+            deduplicator: Some(Arc::new(tokio::sync::Mutex::new(deduplicator))),
+            global_paths: Some(global_paths),
         })
     }
 
@@ -116,7 +147,7 @@ impl RuVectorStorage {
 #[cfg(feature = "ruvector")]
 #[async_trait]
 impl VectorStorage for RuVectorStorage {
-    async fn upsert_chunks(&self, page_id: &str, chunks: Vec<ChunkInput>) -> StorageResult<()> {
+    async fn upsert_chunks(&self, project_id: &str, page_id: &str, chunks: Vec<ChunkInput>) -> StorageResult<()> {
         if chunks.is_empty() {
             return Ok(());
         }
@@ -131,10 +162,57 @@ impl VectorStorage for RuVectorStorage {
 
         let vector_db = self.vector_db.write().await;
         let graph_db = self.graph_db.write().await;
+        
+        let dedup = self.deduplicator.as_ref()
+            .ok_or_else(|| StorageError::new("Deduplicator not initialized".to_string()))?;
+        let mut deduplicator = dedup.lock().await;
 
         for chunk in chunks {
-            let chunk_id = format!("{}#{}", page_id, chunk.chunk_index);
+            let chunk_id = format!("{}:{}#{}", project_id, page_id, chunk.chunk_index);
             
+            // Check for deduplication
+            let dedup_result = deduplicator.check_or_create(
+                &chunk.chunk_text,
+                project_id,
+                &chunk_id,
+            ).map_err(|e| StorageError::new(format!("Deduplication failed: {}", e)))?;
+
+            let vector_id = match &dedup_result {
+                crate::types::storage::DeduplicationResult::Created { vector_id, .. } => {
+                    // New vector - insert into vector DB
+                    let metadata = ChunkMetadata {
+                        chunk_id: chunk_id.clone(),
+                        page_id: page_id.to_string(),
+                        chunk_index: chunk.chunk_index,
+                        chunk_text: chunk.chunk_text.clone(),
+                        heading_path: chunk.heading_path.clone(),
+                        token_ids: chunk.token_ids.clone(),
+                        token_count: chunk.token_count,
+                    };
+
+                    let mut metadata_map = std::collections::HashMap::new();
+                    metadata_map.insert("data".to_string(), serde_json::to_value(&metadata)
+                        .map_err(|e| StorageError::new(format!("Failed to serialize metadata: {}", e)))?);
+                    metadata_map.insert("project_id".to_string(), serde_json::json!(project_id));
+
+                    let entry = ruvector_core::VectorEntry {
+                        id: Some(vector_id.clone()),
+                        vector: chunk.embedding,
+                        metadata: Some(metadata_map.clone()),
+                    };
+
+                    vector_db.insert(entry)
+                        .map_err(|e| StorageError::new(format!("Failed to insert vector: {}", e)))?;
+                    
+                    vector_id.clone()
+                },
+                crate::types::storage::DeduplicationResult::Reused { vector_id, .. } => {
+                    // Reused vector - skip vector DB insertion
+                    vector_id.clone()
+                }
+            };
+
+            // Always create graph node (project-local, not deduplicated)
             let metadata = ChunkMetadata {
                 chunk_id: chunk_id.clone(),
                 page_id: page_id.to_string(),
@@ -148,15 +226,8 @@ impl VectorStorage for RuVectorStorage {
             let mut metadata_map = std::collections::HashMap::new();
             metadata_map.insert("data".to_string(), serde_json::to_value(&metadata)
                 .map_err(|e| StorageError::new(format!("Failed to serialize metadata: {}", e)))?);
-
-            let entry = ruvector_core::VectorEntry {
-                id: Some(chunk_id.clone()),
-                vector: chunk.embedding,
-                metadata: Some(metadata_map.clone()),
-            };
-
-            vector_db.insert(entry)
-                .map_err(|e| StorageError::new(format!("Failed to insert vector: {}", e)))?;
+            metadata_map.insert("project_id".to_string(), serde_json::json!(project_id));
+            metadata_map.insert("vector_id".to_string(), serde_json::json!(vector_id));
 
             let mut properties = Properties::new();
             for (k, v) in metadata_map {
@@ -172,81 +243,106 @@ impl VectorStorage for RuVectorStorage {
         Ok(())
     }
 
-    async fn search(&self, query_embedding: Vec<f32>, top_k: usize) -> StorageResult<Vec<SearchResult>> {
+    async fn search(&self, query_embedding: Vec<f32>, top_k: usize, project_filter: Option<&str>) -> StorageResult<Vec<SearchResult>> {
         if query_embedding.len() != self.dimension {
             return Err(StorageError::new(format!(
                 "Query embedding dimension mismatch: expected {}, got {}",
-                self.dimension, query_embedding.len()
+                self.dimension,
+                query_embedding.len()
             )));
         }
 
         let vector_db = self.vector_db.read().await;
-
+        
         let query = ruvector_core::SearchQuery {
             vector: query_embedding,
             k: top_k,
             filter: None,
             ef_search: None,
         };
-
+        
         let results = vector_db.search(query)
-            .map_err(|e| StorageError::new(format!("Failed to search: {}", e)))?;
+            .map_err(|e| StorageError::new(format!("Search failed: {}", e)))?;
 
-        let search_results: Vec<SearchResult> = results.into_iter()
-            .filter_map(|result| {
-                let metadata_map = result.metadata?;
-                let metadata_value = metadata_map.get("data")?;
-                let metadata: ChunkMetadata = serde_json::from_value(metadata_value.clone()).ok()?;
+        let mut search_results = Vec::new();
+        for result in results {
+            if let Some(metadata_map) = result.metadata {
+                if let Some(filter_project) = project_filter {
+                    if let Some(project_value) = metadata_map.get("project_id") {
+                        let project_id = project_value.as_str().unwrap_or("");
+                        if project_id != filter_project {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    }
+                }
                 
-                Some(SearchResult {
-                    chunk_id: metadata.chunk_id,
-                    page_id: metadata.page_id,
-                    chunk_index: metadata.chunk_index,
-                    chunk_text: metadata.chunk_text,
-                    heading_path: metadata.heading_path,
-                    score: result.score,
-                    token_ids: metadata.token_ids,
-                    token_count: metadata.token_count,
-                })
-            })
-            .collect();
+                if let Some(data_value) = metadata_map.get("data") {
+                    let metadata: ChunkMetadata = serde_json::from_value(data_value.clone())
+                        .map_err(|e| StorageError::new(format!("Failed to deserialize metadata: {}", e)))?;
+                    
+                    search_results.push(SearchResult {
+                        chunk_id: metadata.chunk_id,
+                        page_id: metadata.page_id,
+                        chunk_index: metadata.chunk_index,
+                        chunk_text: metadata.chunk_text,
+                        heading_path: metadata.heading_path,
+                        score: result.score,
+                        token_ids: metadata.token_ids,
+                        token_count: metadata.token_count,
+                    });
+                }
+            }
+        }
 
         Ok(search_results)
     }
 
-    async fn delete_page(&self, page_id: &str) -> StorageResult<()> {
-        let vector_db = self.vector_db.write().await;
+    async fn delete_page(&self, project_id: &str, page_id: &str) -> StorageResult<()> {
         let graph_db = self.graph_db.write().await;
+        
+        let dedup = self.deduplicator.as_ref()
+            .ok_or_else(|| StorageError::new("Deduplicator not initialized".to_string()))?;
+        let mut deduplicator = dedup.lock().await;
 
-        let query = ruvector_core::SearchQuery {
-            vector: vec![0.0; self.dimension],
-            k: 10000,
-            filter: None,
-            ef_search: None,
-        };
+        let prefix = format!("{}:{}#", project_id, page_id);
+        let all_nodes = (0..10000)
+            .map(|i| format!("{}{}", prefix, i))
+            .filter_map(|chunk_id| graph_db.get_node(&chunk_id))
+            .collect::<Vec<_>>();
 
-        let all_results = vector_db.search(query)
-            .map_err(|e| StorageError::new(format!("Failed to search for deletion: {}", e)))?;
-
-        for result in all_results {
-            if result.id.starts_with(&format!("{}#", page_id)) {
-                vector_db.delete(&result.id)
-                    .map_err(|e| StorageError::new(format!("Failed to delete vector: {}", e)))?;
-                
-                let _ = graph_db.delete_node(&result.id);
+        for node in all_nodes {
+            if let Some(PropertyValue::String(data_str)) = node.properties.get("data") {
+                if let Ok(data_value) = serde_json::from_str::<serde_json::Value>(data_str) {
+                    if let Some(chunk_text) = data_value.get("chunk_text").and_then(|v| v.as_str()) {
+                        let content_hash = crate::storage::deduplication::VectorDeduplicator::compute_content_hash(chunk_text);
+                        let _ = deduplicator.remove_chunk(&content_hash, project_id, &node.id);
+                    }
+                }
             }
+            
+            let _ = graph_db.delete_node(&node.id);
         }
 
         Ok(())
     }
 
-    async fn count(&self) -> StorageResult<usize> {
-        let vector_db = self.vector_db.read().await;
+    async fn count(&self, project_filter: Option<&str>) -> StorageResult<usize> {
+        // Count graph nodes (chunks), not vectors (which are deduplicated)
+        let graph_db = self.graph_db.read().await;
         
-        let count = vector_db.len()
-            .map_err(|e| StorageError::new(format!("Failed to count: {}", e)))?;
-
-        Ok(count)
+        if let Some(filter_project) = project_filter {
+            // Match the format used when storing: serde_json::json!(project_id).to_string()
+            let stored_format = serde_json::json!(filter_project).to_string();
+            let nodes = graph_db.get_nodes_by_property(
+                "project_id",
+                &PropertyValue::String(stored_format)
+            );
+            Ok(nodes.len())
+        } else {
+            Ok(graph_db.node_count())
+        }
     }
 
     fn embedding_dim(&self) -> usize {
@@ -283,6 +379,19 @@ mod tests {
         std::fs::create_dir_all(&p).unwrap();
         p
     }
+    
+    fn tmp_global_root() -> String {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let id = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let p = std::env::temp_dir().join(format!("llm-wiki-global-{}-{}", ts, id));
+        std::fs::create_dir_all(&p).unwrap();
+        p.to_string_lossy().to_string()
+    }
 
     fn fake_embedding(seed: u32, dim: usize) -> Vec<f32> {
         (0..dim)
@@ -310,12 +419,13 @@ mod tests {
     async fn test_upsert_and_count() {
         let p = tmp_project();
         let pp = p.to_string_lossy().to_string();
-        let storage = RuVectorStorage::new(pp, 16).await.unwrap();
+        let global_root = tmp_global_root();
+        let storage = RuVectorStorage::new_with_global_root(pp.clone(), 16, Some(global_root)).await.unwrap();
 
         let chunks = make_chunks("test-page", 3, 16);
-        storage.upsert_chunks("test-page", chunks).await.unwrap();
+        storage.upsert_chunks(&pp, "test-page", chunks).await.unwrap();
 
-        let count = storage.count().await.unwrap();
+        let count = storage.count(Some(&pp)).await.unwrap();
         assert_eq!(count, 3);
     }
 
@@ -323,13 +433,14 @@ mod tests {
     async fn test_vector_search() {
         let p = tmp_project();
         let pp = p.to_string_lossy().to_string();
-        let storage = RuVectorStorage::new(pp, 16).await.unwrap();
+        let global_root = tmp_global_root();
+        let storage = RuVectorStorage::new_with_global_root(pp.clone(), 16, Some(global_root)).await.unwrap();
 
         let chunks = make_chunks("page-a", 5, 16);
-        storage.upsert_chunks("page-a", chunks).await.unwrap();
+        storage.upsert_chunks(&pp, "page-a", chunks).await.unwrap();
 
         let query = fake_embedding(2, 16);
-        let results = storage.search(query, 3).await.unwrap();
+        let results = storage.search(query, 3, Some(&pp)).await.unwrap();
 
         assert!(!results.is_empty());
         assert!(results.len() <= 3);
@@ -344,64 +455,75 @@ mod tests {
     async fn test_graph_operations() {
         let p = tmp_project();
         let pp = p.to_string_lossy().to_string();
-        let storage = RuVectorStorage::new(pp, 16).await.unwrap();
+        let global_root = tmp_global_root();
+        let storage = RuVectorStorage::new_with_global_root(pp.clone(), 16, Some(global_root)).await.unwrap();
 
         let chunks_a = make_chunks("page-a", 2, 16);
         let chunks_b = make_chunks("page-b", 2, 16);
         
-        storage.upsert_chunks("page-a", chunks_a).await.unwrap();
-        storage.upsert_chunks("page-b", chunks_b).await.unwrap();
+        storage.upsert_chunks(&pp, "page-a", chunks_a).await.unwrap();
+        storage.upsert_chunks(&pp, "page-b", chunks_b).await.unwrap();
 
-        storage.add_edge("page-a#0", "page-b#0", "references").await.unwrap();
-        storage.add_edge("page-a#0", "page-b#1", "references").await.unwrap();
+        // Chunk IDs now include project_id prefix: {project_id}:{page_id}#{chunk_index}
+        let chunk_a0 = format!("{}:page-a#0", pp);
+        let chunk_b0 = format!("{}:page-b#0", pp);
+        let chunk_b1 = format!("{}:page-b#1", pp);
 
-        let neighbors = storage.get_neighbors("page-a#0").await.unwrap();
+        storage.add_edge(&chunk_a0, &chunk_b0, "references").await.unwrap();
+        storage.add_edge(&chunk_a0, &chunk_b1, "references").await.unwrap();
+
+        let neighbors = storage.get_neighbors(&chunk_a0).await.unwrap();
         assert_eq!(neighbors.len(), 2);
-        assert!(neighbors.contains(&"page-b#0".to_string()));
-        assert!(neighbors.contains(&"page-b#1".to_string()));
+        assert!(neighbors.contains(&chunk_b0));
+        assert!(neighbors.contains(&chunk_b1));
     }
 
     #[tokio::test]
     async fn test_bfs_traversal() {
         let p = tmp_project();
         let pp = p.to_string_lossy().to_string();
-        let storage = RuVectorStorage::new(pp, 16).await.unwrap();
+        let storage = RuVectorStorage::new(pp.clone(), 16).await.unwrap();
 
         let chunks = make_chunks("page-a", 1, 16);
-        storage.upsert_chunks("page-a", chunks).await.unwrap();
+        storage.upsert_chunks(&pp, "page-a", chunks).await.unwrap();
         
         let chunks = make_chunks("page-b", 1, 16);
-        storage.upsert_chunks("page-b", chunks).await.unwrap();
+        storage.upsert_chunks(&pp, "page-b", chunks).await.unwrap();
         
         let chunks = make_chunks("page-c", 1, 16);
-        storage.upsert_chunks("page-c", chunks).await.unwrap();
+        storage.upsert_chunks(&pp, "page-c", chunks).await.unwrap();
 
-        storage.add_edge("page-a#0", "page-b#0", "references").await.unwrap();
-        storage.add_edge("page-b#0", "page-c#0", "references").await.unwrap();
+        let chunk_a0 = format!("{}:page-a#0", pp);
+        let chunk_b0 = format!("{}:page-b#0", pp);
+        let chunk_c0 = format!("{}:page-c#0", pp);
 
-        let visited = storage.bfs("page-a#0", 2).await.unwrap();
+        storage.add_edge(&chunk_a0, &chunk_b0, "references").await.unwrap();
+        storage.add_edge(&chunk_b0, &chunk_c0, "references").await.unwrap();
+
+        let visited = storage.bfs(&chunk_a0, 2).await.unwrap();
         
-        assert!(visited.contains(&"page-a#0".to_string()));
-        assert!(visited.contains(&"page-b#0".to_string()));
-        assert!(visited.contains(&"page-c#0".to_string()));
+        assert!(visited.contains(&chunk_a0));
+        assert!(visited.contains(&chunk_b0));
+        assert!(visited.contains(&chunk_c0));
     }
 
     #[tokio::test]
     async fn test_delete_page() {
         let p = tmp_project();
         let pp = p.to_string_lossy().to_string();
-        let storage = RuVectorStorage::new(pp, 16).await.unwrap();
+        let global_root = tmp_global_root();
+        let storage = RuVectorStorage::new_with_global_root(pp.clone(), 16, Some(global_root)).await.unwrap();
 
         let chunks_a = make_chunks("page-a", 3, 16);
         let chunks_b = make_chunks("page-b", 2, 16);
         
-        storage.upsert_chunks("page-a", chunks_a).await.unwrap();
-        storage.upsert_chunks("page-b", chunks_b).await.unwrap();
+        storage.upsert_chunks(&pp, "page-a", chunks_a).await.unwrap();
+        storage.upsert_chunks(&pp, "page-b", chunks_b).await.unwrap();
         
-        assert_eq!(storage.count().await.unwrap(), 5);
+        assert_eq!(storage.count(None).await.unwrap(), 5);
 
-        storage.delete_page("page-a").await.unwrap();
+        storage.delete_page(&pp, "page-a").await.unwrap();
         
-        assert_eq!(storage.count().await.unwrap(), 2);
+        assert_eq!(storage.count(None).await.unwrap(), 2);
     }
 }

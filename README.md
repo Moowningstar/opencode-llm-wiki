@@ -98,21 +98,32 @@ This is a knowledge graph backend that provides multiple access methods for stor
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
-│ Layer 3: Storage Layer (RuVector Backend)                   │
-│  ┌──────────────────┐              ┌──────────────────┐    │
-│  │  File System     │              │  Vector DB       │    │
-│  │  .wiki/pages/    │              │  RuVector 2.2.0  │    │
-│  │  index.json      │              │  (2048-dim)      │    │
-│  │  graph.json      │              │                  │    │
-│  └──────────────────┘              └──────────────────┘    │
-│  • VectorStorage trait abstraction                         │
-│  • RuVector: Vector + Graph + GNN unified storage          │
+│ Layer 3: Storage Layer (Global + Project-Local)             │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │ Global Storage (~/.opencode-llm-wiki/)               │   │
+│  │  • .vectors/.store/      - Deduplicated vectors     │   │
+│  │  • .hash_index.json      - Content hash index       │   │
+│  │  • .ref_counter.db       - Reference counting       │   │
+│  │  • .projects/.registry   - Project registry         │   │
+│  └──────────────────────────────────────────────────────┘   │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │ Project-Local Storage (.llm-wiki/)                   │   │
+│  │  • pages/                - Markdown wiki files       │   │
+│  │  • index.json            - Page metadata             │   │
+│  │  • graph.json            - Relationships             │   │
+│  │  • ruvector/graph/       - Project graph data        │   │
+│  └──────────────────────────────────────────────────────┘   │
+│  • VectorStorage trait with project filtering              │
+│  • RuVector 2.2.0: Vector + Graph + GNN unified storage    │
+│  • 30%+ storage savings via deduplication                  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 **Key Design Principles:**
 
 - **Multiple Interfaces**: HTTP API for programmatic access, CLI for automation, MCP for AI agents
+- **Global Storage**: Vectors deduplicated across projects at `~/.opencode-llm-wiki/`
+- **Hybrid Architecture**: Vectors global (deduplicated), graph data project-local (isolated)
 - **Metadata-Driven**: index.json manages page metadata, graph.json stores relationships
 - **Pluggable Storage**: VectorStorage trait enables easy backend migration
 - **Clean Separation**: Interface layer has no business logic, storage layer has no retrieval logic
@@ -124,7 +135,9 @@ This is a knowledge graph backend that provides multiple access methods for stor
 ### Core Backend (Production Rust)
 
 - ✅ **3-Layer Architecture** — Clean separation: Interface → Services → Storage
+- ✅ **Global Storage with Deduplication** — 30%+ storage savings via content-based vector deduplication
 - ✅ **RuVector Integration** — Unified vector + graph + GNN storage (2048-dimensional embeddings)
+- ✅ **Multi-Project Support** — Cross-project search and knowledge sharing
 - ✅ **Graph Algorithms** — PageRank, Louvain community detection, Dijkstra shortest paths, centrality analysis
 - ✅ **Vector Semantic Search** — Fast ANN retrieval with cosine similarity
 - ✅ **Knowledge Graph** — Automatic link extraction, relationship mapping, graph traversal

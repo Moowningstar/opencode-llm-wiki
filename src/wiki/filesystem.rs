@@ -21,6 +21,18 @@ impl WikiFileSystem {
             fs::write(&purpose_path, Self::default_purpose())?;
         }
         
+        let index_path = self.index_path();
+        if !index_path.exists() {
+            fs::write(&index_path, r#"{"pages":[],"version":"1.1.0"}"#)?;
+            println!("✅ Created empty index.json");
+        }
+        
+        let graph_path = self.graph_path();
+        if !graph_path.exists() {
+            fs::write(&graph_path, r#"{"nodes":[],"edges":[],"version":"1.1.0"}"#)?;
+            println!("✅ Created empty graph.json");
+        }
+        
         Ok(())
     }
 

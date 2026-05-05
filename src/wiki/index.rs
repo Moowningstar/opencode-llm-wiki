@@ -11,6 +11,7 @@ use super::filesystem::WikiFileSystem;
 pub struct WikiIndex {
     pub version: String,
     pub pages: Vec<PageMetadata>,
+    #[serde(default)]
     pub metadata: IndexMetadata,
 }
 
@@ -38,6 +39,17 @@ pub struct IndexMetadata {
     pub last_updated: DateTime<Utc>,
     pub categories: Vec<String>,
     pub top_tags: Vec<String>,
+}
+
+impl Default for IndexMetadata {
+    fn default() -> Self {
+        Self {
+            total_pages: 0,
+            last_updated: Utc::now(),
+            categories: Vec::new(),
+            top_tags: Vec::new(),
+        }
+    }
 }
 
 pub struct IndexManager {
@@ -149,7 +161,7 @@ impl IndexManager {
     }
 
     pub fn extract_metadata(&self, page_id: &str, content: &str) -> Result<PageMetadata> {
-        let title = Self::extract_title(content);
+        let title = Self::extract_title(page_id, content);
         let word_count = content.split_whitespace().count();
         let links_to = Self::extract_links(content);
         
@@ -169,14 +181,71 @@ impl IndexManager {
         })
     }
 
-    fn extract_title(content: &str) -> String {
+    fn extract_title(page_id: &str, content: &str) -> String {
         for line in content.lines() {
             let trimmed = line.trim();
             if trimmed.starts_with("# ") {
                 return trimmed[2..].trim().to_string();
             }
         }
-        "Untitled".to_string()
+        
+        Self::generate_title_from_page_id(page_id, content)
+    }
+    
+    fn generate_title_from_page_id(page_id: &str, content: &str) -> String {
+        let id = page_id.strip_prefix(".wiki-").unwrap_or(page_id);
+        
+        if id.ends_with(".rs") {
+            let module_name = id.strip_suffix(".rs").unwrap_or(id);
+            
+            if let Some(struct_name) = Self::extract_main_struct(content) {
+                return format!("{} ({})", struct_name, module_name);
+            }
+            
+            if let Some(fn_name) = Self::extract_main_function(content) {
+                return format!("{}() ({})", fn_name, module_name);
+            }
+            
+            return format!("Module: {}", module_name.replace('-', " ").replace('_', " "));
+        }
+        
+        if id.ends_with(".toml") {
+            return "Configuration".to_string();
+        }
+        
+        id.replace('-', " ").replace('_', " ")
+    }
+    
+    fn extract_main_struct(content: &str) -> Option<String> {
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("pub struct ") {
+                if let Some(name) = trimmed.strip_prefix("pub struct ") {
+                    if let Some(struct_name) = name.split_whitespace().next() {
+                        return Some(struct_name.trim_end_matches('{').trim().to_string());
+                    }
+                }
+            }
+        }
+        None
+    }
+    
+    fn extract_main_function(content: &str) -> Option<String> {
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("pub fn ") || trimmed.starts_with("pub async fn ") {
+                let after_fn = if trimmed.starts_with("pub async fn ") {
+                    trimmed.strip_prefix("pub async fn ")?
+                } else {
+                    trimmed.strip_prefix("pub fn ")?
+                };
+                
+                if let Some(fn_name) = after_fn.split('(').next() {
+                    return Some(fn_name.trim().to_string());
+                }
+            }
+        }
+        None
     }
 
     fn extract_links(content: &str) -> Vec<String> {

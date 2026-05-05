@@ -18,6 +18,7 @@ use crate::wiki::graph::GraphManager;
 
 #[derive(Clone)]
 pub struct AppState {
+    pub project_id: String,
     pub storage: Arc<dyn VectorStorage>,
     pub embedding_service: EmbeddingService,
     pub ingest_service: Arc<IngestService>,
@@ -52,7 +53,11 @@ impl AppState {
         
         let embedding_service = EmbeddingService::new(embedding_config.clone())?;
         
+        // Use project_path as project_id for now (can be improved later)
+        let project_id = project_path.to_string();
+        
         let ingest_service = Arc::new(IngestService::new(
+            project_id.clone(),
             storage.clone(),
             embedding_service.clone(),
             ingest_config,
@@ -71,6 +76,7 @@ impl AppState {
         let graph_manager = Arc::new(GraphManager::new(wiki_fs.clone()));
 
         Ok(Self {
+            project_id,
             storage,
             embedding_service,
             ingest_service,

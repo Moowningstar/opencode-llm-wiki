@@ -34,15 +34,18 @@ pub struct IngestResult {
 
 /// Service for ingesting markdown content into the vector store.
 pub struct IngestService {
+    project_id: String,
     storage: Arc<dyn VectorStorage>,
     embedding_service: EmbeddingService,
     chunking_service: ChunkingService,
+    #[allow(dead_code)]
     config: IngestConfig,
 }
 
 impl IngestService {
     /// Create a new ingest service.
     pub fn new(
+        project_id: String,
         storage: Arc<dyn VectorStorage>,
         embedding_service: EmbeddingService,
         config: IngestConfig,
@@ -54,6 +57,7 @@ impl IngestService {
             .with_tokenizer(tokenizer);
 
         Ok(Self {
+            project_id,
             storage,
             embedding_service,
             chunking_service,
@@ -106,7 +110,7 @@ impl IngestService {
                 })
                 .collect();
 
-            self.storage.upsert_chunks(&page_id, chunk_inputs).await
+            self.storage.upsert_chunks(&self.project_id, &page_id, chunk_inputs).await
                 .context(format!("Failed to store chunks for page: {}", page_id))?;
 
             total_chunks += chunks.len();
@@ -159,7 +163,7 @@ impl IngestService {
             })
             .collect();
 
-        self.storage.upsert_chunks(page_id, chunk_inputs).await
+        self.storage.upsert_chunks(&self.project_id, page_id, chunk_inputs).await
             .context("Failed to store chunks")?;
 
         Ok(IngestResult {
@@ -260,13 +264,13 @@ impl IngestService {
 
     /// Delete a page and all its chunks from the vector store.
     pub async fn delete_page(&self, page_id: &str) -> Result<()> {
-        self.storage.delete_page(page_id).await
+        self.storage.delete_page(&self.project_id, page_id).await
             .context("Failed to delete page")
     }
 
     /// Get the total number of chunks in the vector store.
     pub async fn count_chunks(&self) -> Result<usize> {
-        self.storage.count().await
+        self.storage.count(None).await
             .context("Failed to count chunks")
     }
 }
