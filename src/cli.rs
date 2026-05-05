@@ -6,7 +6,7 @@ use llm_wiki_server::storage::VectorStorage;
 #[derive(Parser)]
 #[command(name = "llm-wiki")]
 #[command(about = "OpenCode LLM Wiki CLI", long_about = None)]
-#[command(version = "0.1.0")]
+#[command(version = "1.1.1")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
